@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Go ports map matching error messages back to the package's exported sentinel errors, so callers using `errors.Is` keep working (#365).
 - On Windows, `profile` and `go` find the project's own functions in a Node workload: Node's
   `file:///C:/...` frame URLs kept the slash before the drive letter, so no frame matched the
   project root and `go` stopped with `no hot function to port`.

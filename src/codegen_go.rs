@@ -1538,6 +1538,9 @@ func diff(cases, out string) {
 				expected[k] = raw
 			}
 		}
+		if _, ok := c["sentinel"]; !ok {
+			delete(got, "sentinel")
+		}
 		same := false
 		if p, ok := got["panic"]; ok && strings.Contains(fmt.Sprint(p), "Rust panic:") {
 			same = false
@@ -1925,12 +1928,112 @@ func Lookup(id int) (string, error) {
         assert!(d.contains("errors.Is(err, pkg.ErrNotFound)"), "{d}");
         assert!(!d.contains("ErrOtherOS"), "{d}");
         assert!(d.contains("res[\"sentinel\"] = s"), "{d}");
-        assert!(d.contains("\"sentinel\""), "{d}");
+        assert!(d.contains("delete(got, \"sentinel\")"), "{d}");
 
         let s = shadow(&manifest, "example.com/app/store");
         assert!(s.contains("var ErrNotFound = orig.ErrNotFound"), "{s}");
         assert!(s.contains("func remapErr(err error) error"), "{s}");
         assert!(s.contains("remapErr(n1)"), "{s}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn diff_handles_legacy_cases_without_sentinel_and_rejects_plain_error() {
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!(
+            "rust-anything-go-sentinel-diff-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("store")).unwrap();
+        std::fs::create_dir_all(dir.join("drv")).unwrap();
+
+        let src = r#"package store
+
+import "errors"
+
+var ErrNotFound = errors.New("not found")
+
+func Lookup(id int) (string, error) {
+	if id == 1 {
+		return "", ErrNotFound
+	}
+	return "", errors.New("not found")
+}
+"#;
+        std::fs::write(dir.join("go.mod"), "module example.com/app\n\ngo 1.22\n").unwrap();
+        std::fs::write(dir.join("store/store.go"), src).unwrap();
+
+        let exports = crate::lang::go::exports("store/store.go", src);
+        let manifest = Manifest {
+            schema: String::new(),
+            root: dir.clone(),
+            root_written: None,
+            unit: "store/".into(),
+            language: crate::lang::Lang::Go,
+            kind: crate::bridge::Kind::Ffi,
+            crate_name: "store-rs".into(),
+            exports,
+            classes: vec![],
+            js_only: vec![],
+            batches: vec![],
+            allocator: Default::default(),
+            float_tolerance: None,
+        };
+        let drv = driver(&manifest, "example.com/app/store");
+        std::fs::write(dir.join("drv/main.go"), drv).unwrap();
+
+        // 1) Legacy case (no "sentinel" key) passes even though Lookup(1) returns ErrNotFound.
+        // 2) Recorded sentinel case passes when Lookup(1) returns ErrNotFound.
+        // 3) Recorded sentinel case fails when Lookup(2) returns a plain error with the same text.
+        let cases_path = dir.join("cases.jsonl");
+        let out_path = dir.join("out.json");
+        std::fs::write(
+            &cases_path,
+            concat!(
+                "{\"fn\":\"Lookup\",\"args\":[1],\"error\":\"not found\"}\n",
+                "{\"fn\":\"Lookup\",\"args\":[1],\"error\":\"not found\",\"sentinel\":\"ErrNotFound\"}\n",
+                "{\"fn\":\"Lookup\",\"args\":[2],\"error\":\"not found\",\"sentinel\":\"ErrNotFound\"}\n",
+            ),
+        )
+        .unwrap();
+
+        let status = std::process::Command::new("go")
+            .current_dir(&dir)
+            .args([
+                "run",
+                "./drv",
+                "diff",
+                cases_path.to_str().unwrap(),
+                out_path.to_str().unwrap(),
+            ])
+            .status()
+            .unwrap();
+        assert!(status.success(), "go driver diff failed to run");
+
+        let summary: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&out_path).unwrap()).unwrap();
+        assert_eq!(summary["total"], 3, "{summary}");
+        assert_eq!(summary["passed"], 2, "{summary}");
+        assert_eq!(summary["failed"], 1, "{summary}");
+        let mismatches = summary["mismatches"].as_array().unwrap();
+        assert_eq!(mismatches.len(), 1, "{summary}");
+        assert_eq!(mismatches[0]["args"], serde_json::json!([2]), "{summary}");
+        assert_eq!(
+            mismatches[0]["expected"]["sentinel"], "ErrNotFound",
+            "{summary}"
+        );
+        assert!(
+            mismatches[0]["actual"].get("sentinel").is_none(),
+            "{summary}"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
