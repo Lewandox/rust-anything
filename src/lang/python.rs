@@ -1388,7 +1388,7 @@ pub fn to_ts_type(hint: &str) -> String {
         "int" => "int".into(),
         "float" => "number".into(),
         "bool" => "boolean".into(),
-        "bytes" | "bytearray" | "memoryview" => "Uint8Array".into(),
+        "bytes" | "bytearray" | "memoryview" => "pybytes".into(),
         "None" | "NoneType" => "undefined".into(),
         "list" | "List" | "Sequence" | "Iterable" | "MutableSequence" | "Collection" => {
             format!("{}[]", wrap(&arg(0)))
@@ -1658,11 +1658,11 @@ mod tests {
 
     #[test]
     fn maps_bytes_hints_to_bytes_dialect_type() {
-        assert_eq!(to_ts_type("bytes"), "Uint8Array");
-        assert_eq!(to_ts_type("bytearray"), "Uint8Array");
-        assert_eq!(to_ts_type("memoryview"), "Uint8Array");
-        assert_eq!(to_ts_type("Optional[bytes]"), "Uint8Array | undefined");
-        assert_eq!(to_ts_type("list[bytes]"), "Uint8Array[]");
-        assert_eq!(to_ts_type("bytes | None"), "Uint8Array | undefined");
+        assert_eq!(to_ts_type("bytes"), "pybytes");
+        assert_eq!(to_ts_type("bytearray"), "pybytes");
+        assert_eq!(to_ts_type("memoryview"), "pybytes");
+        assert_eq!(to_ts_type("Optional[bytes]"), "pybytes | undefined");
+        assert_eq!(to_ts_type("list[bytes]"), "pybytes[]");
+        assert_eq!(to_ts_type("bytes | None"), "pybytes | undefined");
     }
 }

@@ -353,7 +353,7 @@ impl RType {
             "number" => Self::F64,
             "int" => Self::Int,
             "boolean" => Self::Bool,
-            "Uint8Array" => Self::Bytes,
+            "pybytes" => Self::Bytes,
             "void" | "undefined" => Self::Unit,
             _ if is_string_literal(ts) => Self::Str,
             _ => Self::Json,

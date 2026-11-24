@@ -133,7 +133,6 @@ fn direct(ty: &str) -> bool {
         "String",
         "f64",
         "i64",
-        "u8",
         "bool",
         "serde_json",
         "Value",
@@ -141,7 +140,10 @@ fn direct(ty: &str) -> bool {
         "crate",
         "pynum",
     ];
-    ty.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+    let compact: String = ty.chars().filter(|c| !c.is_whitespace()).collect();
+    let normalized = compact.replace("Vec<u8>", "String");
+    normalized
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
         .filter(|w| !w.is_empty())
         .all(|w| KNOWN.contains(&w))
 }
@@ -1271,6 +1273,8 @@ mod tests {
         assert!(direct("Vec<u8>"));
         assert!(direct("Option<Vec<u8>>"));
         assert!(direct("Vec<Vec<u8>>"));
+        assert!(!direct("u8"));
+        assert!(!direct("Option<u8>"));
         assert_eq!(binding_type("Vec<u8>"), "Bound<'_, PyAny>");
         assert_eq!(binding_type("Option<Vec<u8>>"), "Option<Bound<'_, PyAny>>");
 
@@ -1289,10 +1293,10 @@ mod tests {
             line: 1,
             params: vec![Param {
                 name: "data".into(),
-                ts_type: "Uint8Array".into(),
+                ts_type: "pybytes".into(),
                 ..Default::default()
             }],
-            returns: "Uint8Array".into(),
+            returns: "pybytes".into(),
             ..Default::default()
         }];
         let api = PortApi {

@@ -66,7 +66,7 @@ pub fn resolve(name: &str, args: &[Shape], types: &[LocalType]) -> Shape {
             other => other.clone(),
         },
         ("int", []) => Shape::Int,
-        ("Uint8Array", []) => Shape::Bytes,
+        ("pybytes", []) => Shape::Bytes,
         _ => match types.iter().find(|t| t.name == name) {
             Some(t) if t.alias => parse(&t.text),
             // An interface: its body is a type literal (`extends` is not followed).
