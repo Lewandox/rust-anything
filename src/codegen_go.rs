@@ -138,6 +138,137 @@ pub fn package_name(m: &Manifest) -> String {
         .unwrap_or_else(|| "port".into())
 }
 
+/// The Go sources of the unit selected for the active Go build target (excludes other-OS/arch
+/// files such as `errors_windows.go` on Linux so generated sentinel references always compile).
+fn sentinel_sources(m: &Manifest) -> Vec<String> {
+    let dir = m.root.join(m.unit.trim_end_matches('/'));
+    let dir = if dir.is_file() {
+        dir.parent().map(Path::to_path_buf).unwrap_or(dir)
+    } else {
+        dir
+    };
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension().is_some_and(|e| e == "go")
+                && !p.to_string_lossy().ends_with("_test.go")
+                && go_file_matches_host(p)
+        })
+        .collect();
+    files.sort();
+    files
+        .iter()
+        .filter_map(|p| std::fs::read_to_string(p).ok())
+        .filter(|src| go_build_tag_matches_host(src))
+        .collect()
+}
+
+fn host_goos() -> &'static str {
+    match std::env::consts::OS {
+        "macos" => "darwin",
+        other => other,
+    }
+}
+
+fn host_goarch() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        "aarch64" => "arm64",
+        "x86" => "386",
+        other => other,
+    }
+}
+
+fn go_file_matches_host(path: &Path) -> bool {
+    const KNOWN_GOOS: &[&str] = &[
+        "aix",
+        "android",
+        "darwin",
+        "dragonfly",
+        "freebsd",
+        "hurd",
+        "illumos",
+        "ios",
+        "js",
+        "linux",
+        "netbsd",
+        "openbsd",
+        "plan9",
+        "solaris",
+        "wasip1",
+        "windows",
+    ];
+    const KNOWN_GOARCH: &[&str] = &[
+        "386", "amd64", "arm", "arm64", "loong64", "mips", "mips64", "mips64le", "mipsle", "ppc64",
+        "ppc64le", "riscv64", "s390x", "wasm",
+    ];
+    let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+        return true;
+    };
+    let mut parts: Vec<&str> = stem.split('_').collect();
+    if parts.len() < 2 {
+        return true;
+    }
+    if let Some(&last) = parts.last()
+        && KNOWN_GOARCH.contains(&last)
+    {
+        if last != host_goarch() {
+            return false;
+        }
+        parts.pop();
+    }
+    if parts.len() >= 2
+        && let Some(&last) = parts.last()
+        && KNOWN_GOOS.contains(&last)
+        && last != host_goos()
+    {
+        return false;
+    }
+    true
+}
+
+fn go_build_tag_matches_host(source: &str) -> bool {
+    let host_os = host_goos();
+    let is_unix = matches!(
+        host_os,
+        "darwin" | "dragonfly" | "freebsd" | "linux" | "netbsd" | "openbsd" | "solaris"
+    );
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("package ") {
+            break;
+        }
+        if let Some(expr) = trimmed.strip_prefix("//go:build ") {
+            let expr = expr.trim();
+            if matches!(
+                expr,
+                "linux" | "windows" | "darwin" | "freebsd" | "openbsd" | "netbsd" | "plan9"
+            ) {
+                return expr == host_os;
+            }
+            if expr == "unix" {
+                return is_unix;
+            }
+            if let Some(neg) = expr.strip_prefix('!') {
+                let neg = neg.trim();
+                if matches!(
+                    neg,
+                    "linux" | "windows" | "darwin" | "freebsd" | "openbsd" | "netbsd"
+                ) {
+                    return neg != host_os;
+                }
+                if neg == "unix" {
+                    return !is_unix;
+                }
+            }
+        }
+    }
+    true
+}
+
 /// Re-declares exported sentinel errors and emits `rustAnythingToErr` so `errors.Is` and `==`
 /// match the package's own error values.
 fn emit_sentinel_lookup(out: &mut String, sentinels: &[crate::lang::go::SentinelError]) {
@@ -147,18 +278,33 @@ fn emit_sentinel_lookup(out: &mut String, sentinels: &[crate::lang::go::Sentinel
     }
     out.push('\n');
     for s in sentinels {
-        let text = s.message.as_deref().unwrap_or(&s.name);
-        let quoted = serde_json::to_string(text).unwrap_or_else(|_| format!("{text:?}"));
-        let _ = writeln!(out, "var {} = errors.New({quoted})", s.name);
+        if let Some(target) = &s.alias_of {
+            let _ = writeln!(out, "var {} = {target}", s.name);
+        } else {
+            let text = s.message.as_deref().unwrap_or(&s.name);
+            let quoted = serde_json::to_string(text).unwrap_or_else(|_| format!("{text:?}"));
+            let _ = writeln!(out, "var {} = errors.New({quoted})", s.name);
+        }
     }
-    out.push_str("\ntype rustAnythingSentinel struct {\n\tname string\n\ttext string\n\terr  error\n}\n\nvar rustAnythingSentinels = []rustAnythingSentinel{\n");
+    out.push_str(
+        "\ntype rustAnythingWrappedErr struct {\n\tsentinel error\n\tmsg      string\n}\n\n\
+         func (e *rustAnythingWrappedErr) Error() string { return e.msg }\n\
+         func (e *rustAnythingWrappedErr) Unwrap() error { return e.sentinel }\n\n\
+         type rustAnythingSentinel struct {\n\tname    string\n\ttext    string\n\thasText bool\n\terr     error\n}\n\n\
+         var rustAnythingSentinels = []rustAnythingSentinel{\n",
+    );
     for s in sentinels {
         let name_q = serde_json::to_string(&s.name).unwrap_or_else(|_| format!("{:?}", s.name));
-        let text_q = serde_json::to_string(s.message.as_deref().unwrap_or(""))
-            .unwrap_or_else(|_| "\"\"".into());
+        let (has_text, text_q) = match &s.message {
+            Some(t) => (
+                "true",
+                serde_json::to_string(t).unwrap_or_else(|_| format!("{t:?}")),
+            ),
+            None => ("false", "\"\"".into()),
+        };
         let _ = writeln!(
             out,
-            "\t{{name: {name_q}, text: {text_q}, err: {}}},",
+            "\t{{name: {name_q}, text: {text_q}, hasText: {has_text}, err: {}}},",
             s.name
         );
     }
@@ -167,15 +313,19 @@ fn emit_sentinel_lookup(out: &mut String, sentinels: &[crate::lang::go::Sentinel
 
 func rustAnythingToErr(msg string) error {
 	for _, s := range rustAnythingSentinels {
-		if msg == s.name || (s.text != "" && msg == s.text) {
+		if msg == s.name || (s.hasText && msg == s.text) {
 			return s.err
 		}
 	}
 	for _, s := range rustAnythingSentinels {
 		if prefix := s.name + ": "; strings.HasPrefix(msg, prefix) {
-			return fmt.Errorf("%w: %s", s.err, strings.TrimPrefix(msg, prefix))
+			rest := strings.TrimPrefix(msg, prefix)
+			if !s.hasText {
+				return &rustAnythingWrappedErr{sentinel: s.err, msg: rest}
+			}
+			return fmt.Errorf("%w: %s", s.err, rest)
 		}
-		if s.text != "" {
+		if s.hasText && s.text != "" {
 			if prefix := s.text + ": "; strings.HasPrefix(msg, prefix) {
 				return fmt.Errorf("%w: %s", s.err, strings.TrimPrefix(msg, prefix))
 			}
@@ -249,7 +399,7 @@ pub fn wrapper(m: &Manifest, api: &crate::codegen::PortApi) -> String {
     let lib = m.lib_name();
     let sources = unit_sources(m);
     let types = crate::lang::go::type_decls(&sources, &used_types(m));
-    let sentinels = crate::lang::go::sentinel_errors(&sources);
+    let sentinels = crate::lang::go::sentinel_errors(&sentinel_sources(m));
     let extra_imports = if sentinels.is_empty() {
         ""
     } else {
@@ -1207,7 +1357,7 @@ pub fn driver(m: &Manifest, import_path: &str) -> String {
         };
         let _ = writeln!(cases, "\t\treturn map[string]any{{\"ok\": {ok}}}");
     }
-    let sentinels = crate::lang::go::sentinel_errors(&unit_sources(m));
+    let sentinels = crate::lang::go::sentinel_errors(&sentinel_sources(m));
     let mut sentinel_fn = String::from("func rustAnythingSentinelName(err error) string {\n");
     for s in &sentinels {
         let name_q = serde_json::to_string(&s.name).unwrap_or_else(|_| format!("{:?}", s.name));
@@ -1474,7 +1624,7 @@ func main() {
 /// `RUST_ANYTHING_MODE=old` runs the original only, `new` the port only.
 pub fn shadow(m: &Manifest, original: &str) -> String {
     let wrapper = crate::harness_go::wrapper_module(m);
-    let sentinels = crate::lang::go::sentinel_errors(&unit_sources(m));
+    let sentinels = crate::lang::go::sentinel_errors(&sentinel_sources(m));
     let remap_sentinels = !sentinels.is_empty() && m.exports.iter().any(|f| results(f).1);
     let extra_imports = if remap_sentinels {
         "\t\"errors\"\n\t\"fmt\"\n\t\"strings\"\n"
@@ -1706,6 +1856,7 @@ import "errors"
 
 var (
 	ErrNotFound = errors.New("not found")
+	ErrAlias    error = ErrNotFound
 	ErrBadInput = errors.New("bad input")
 )
 
@@ -1717,6 +1868,17 @@ func Lookup(id int) (string, error) {
 }
 "#;
         std::fs::write(dir.join("store/store.go"), src).unwrap();
+        // Platform-specific file for another OS must be excluded from sentinel discovery.
+        let other_os = if host_goos() == "windows" {
+            "linux"
+        } else {
+            "windows"
+        };
+        std::fs::write(
+            dir.join(format!("store/errors_{other_os}.go")),
+            "package store\nimport \"errors\"\nvar ErrOtherOS = errors.New(\"other\")\n",
+        )
+        .unwrap();
         let exports = crate::lang::go::exports("store/store.go", src);
         let manifest = Manifest {
             schema: String::new(),
@@ -1741,10 +1903,13 @@ func Lookup(id int) (string, error) {
             w.contains("var ErrNotFound = errors.New(\"not found\")"),
             "{w}"
         );
+        assert!(w.contains("var ErrAlias = ErrNotFound"), "{w}");
         assert!(
             w.contains("var ErrBadInput = errors.New(\"bad input\")"),
             "{w}"
         );
+        assert!(!w.contains("ErrOtherOS"), "{w}");
+        assert!(w.contains("hasText: true"), "{w}");
         assert!(
             w.contains("func rustAnythingToErr(msg string) error"),
             "{w}"
@@ -1758,6 +1923,7 @@ func Lookup(id int) (string, error) {
 
         let d = driver(&manifest, "example.com/app/store");
         assert!(d.contains("errors.Is(err, pkg.ErrNotFound)"), "{d}");
+        assert!(!d.contains("ErrOtherOS"), "{d}");
         assert!(d.contains("res[\"sentinel\"] = s"), "{d}");
         assert!(d.contains("\"sentinel\""), "{d}");
 
