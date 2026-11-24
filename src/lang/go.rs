@@ -658,6 +658,132 @@ pub fn struct_fields(sources: &[String], name: &str) -> Option<Vec<(String, Stri
     None
 }
 
+/// An exported package-level sentinel error variable (`var ErrNotFound = errors.New("not found")`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SentinelError {
+    pub name: String,
+    /// The static error text when initialized with a string literal (`errors.New("...")` or
+    /// format-free `fmt.Errorf("...")`), `None` when the text is computed at run time.
+    pub message: Option<String>,
+}
+
+/// Exported sentinel error variables declared in the unit's Go source files.
+pub fn sentinel_errors(sources: &[String]) -> Vec<SentinelError> {
+    let mut out: Vec<SentinelError> = Vec::new();
+    for source in sources {
+        let Some(tree) = syntax::parse(&language(), source) else {
+            continue;
+        };
+        for node in named_children(tree.root_node()) {
+            if node.kind() != "var_declaration" {
+                continue;
+            }
+            for child in named_children(node) {
+                if child.kind() == "var_spec" {
+                    collect_var_spec(child, source, &mut out);
+                } else if child.kind() == "var_spec_list" {
+                    for spec in named_children(child) {
+                        if spec.kind() == "var_spec" {
+                            collect_var_spec(spec, source, &mut out);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+fn collect_var_spec(spec: Node, source: &str, out: &mut Vec<SentinelError>) {
+    let mut cursor = spec.walk();
+    let names: Vec<&str> = spec
+        .children_by_field_name("name", &mut cursor)
+        .map(|n| text(n, source))
+        .collect();
+    let explicit_error = spec
+        .child_by_field_name("type")
+        .is_some_and(|t| text(t, source).trim() == "error");
+    let values: Vec<Node> = spec
+        .child_by_field_name("value")
+        .map(named_children)
+        .unwrap_or_default();
+    for (i, name) in names.into_iter().enumerate() {
+        if !name.starts_with(char::is_uppercase) || out.iter().any(|s| s.name == name) {
+            continue;
+        }
+        let Some(&expr) = values.get(i) else {
+            continue;
+        };
+        if let Some(message) = error_initializer(expr, source, explicit_error) {
+            out.push(SentinelError {
+                name: name.to_string(),
+                message,
+            });
+        }
+    }
+}
+
+/// Returns `Some(static_message)` when `expr` constructs a sentinel error (`errors.New(...)`,
+/// `fmt.Errorf(...)`, or an explicitly typed `var Err... error = ...`).
+fn error_initializer(expr: Node, source: &str, explicit_error: bool) -> Option<Option<String>> {
+    if expr.kind() == "call_expression" {
+        let func = expr
+            .child_by_field_name("function")
+            .map(|n| text(n, source).trim())
+            .unwrap_or_default();
+        let args: Vec<Node> = expr
+            .child_by_field_name("arguments")
+            .map(named_children)
+            .unwrap_or_default();
+        if func == "errors.New" {
+            let msg = args.first().and_then(|a| unquote_go_string(*a, source));
+            return Some(msg);
+        }
+        if func == "fmt.Errorf" {
+            let msg = (args.len() == 1)
+                .then(|| unquote_go_string(args[0], source))
+                .flatten()
+                .filter(|s| !s.contains('%'));
+            return Some(msg);
+        }
+    }
+    if explicit_error {
+        return Some(None);
+    }
+    None
+}
+
+fn unquote_go_string(node: Node, source: &str) -> Option<String> {
+    let raw = text(node, source);
+    match node.kind() {
+        "raw_string_literal" => raw
+            .strip_prefix('`')
+            .and_then(|s| s.strip_suffix('`'))
+            .map(str::to_string),
+        "interpreted_string_literal" => {
+            let inner = raw.strip_prefix('"')?.strip_suffix('"')?;
+            let mut out = String::with_capacity(inner.len());
+            let mut chars = inner.chars();
+            while let Some(c) = chars.next() {
+                if c != '\\' {
+                    out.push(c);
+                    continue;
+                }
+                match chars.next()? {
+                    '\\' => out.push('\\'),
+                    '"' => out.push('"'),
+                    'n' => out.push('\n'),
+                    'r' => out.push('\r'),
+                    't' => out.push('\t'),
+                    _ => return None,
+                }
+            }
+            Some(out)
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -715,6 +841,64 @@ func Echo(p Point) Point { return p }"#,
         assert_eq!(
             fns[4].prototype.as_deref(),
             Some("func Move(p Point) Point")
+        );
+    }
+
+    #[test]
+    fn collects_exported_sentinel_errors() {
+        let src = String::from(
+            r#"package store
+
+import (
+    "errors"
+    "fmt"
+)
+
+var ErrNotFound = errors.New("not found")
+
+var (
+    ErrEmpty   = fmt.Errorf("empty input")
+    ErrRaw     = errors.New(`raw "text"`)
+    ErrDynamic = fmt.Errorf("bad %d", 1)
+    ErrTyped error = customErr()
+    ErrA, ErrB = errors.New("a"), errors.New("b")
+    errPrivate = errors.New("private")
+    MaxItems   = 100
+)
+"#,
+        );
+        assert_eq!(
+            sentinel_errors(&[src]),
+            vec![
+                SentinelError {
+                    name: "ErrNotFound".into(),
+                    message: Some("not found".into()),
+                },
+                SentinelError {
+                    name: "ErrEmpty".into(),
+                    message: Some("empty input".into()),
+                },
+                SentinelError {
+                    name: "ErrRaw".into(),
+                    message: Some("raw \"text\"".into()),
+                },
+                SentinelError {
+                    name: "ErrDynamic".into(),
+                    message: None,
+                },
+                SentinelError {
+                    name: "ErrTyped".into(),
+                    message: None,
+                },
+                SentinelError {
+                    name: "ErrA".into(),
+                    message: Some("a".into()),
+                },
+                SentinelError {
+                    name: "ErrB".into(),
+                    message: Some("b".into()),
+                },
+            ]
         );
     }
 }
