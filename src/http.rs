@@ -899,6 +899,10 @@ fn parse_form_part(
             filename_override = Some(unquote_form_value(v.trim()));
         } else if trimmed.starts_with("headers=") {
             return None;
+        } else if let Some(ct) = type_override.as_mut() {
+            // Curl treats parameters after `;type=` (e.g. `;charset=UTF-8`) as part of the media type.
+            ct.push(';');
+            ct.push_str(trimmed);
         } else {
             trailing_literal.push(';');
             trailing_literal.push_str(seg);
@@ -2449,6 +2453,21 @@ mod tests {
                 &root,
             )
             .is_none()
+        );
+        // Parameters following `;type=` belong to the part Content-Type, not the field value.
+        let typed = parse_curl(
+            "curl -F 'note=hello;type=text/plain;charset=UTF-8' http://localhost:8080/typed",
+            &root,
+            &root,
+        )
+        .unwrap();
+        let typed_raw = typed.body_bytes().unwrap().unwrap();
+        assert!(
+            find(
+                &typed_raw,
+                b"name=\"note\"\r\nContent-Type: text/plain;charset=UTF-8\r\n\r\nhello\r\n"
+            )
+            .is_some()
         );
         // Non-string TOML body declarations are rejected before exclusivity checks.
         std::fs::write(
