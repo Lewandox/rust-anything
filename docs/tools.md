@@ -280,7 +280,7 @@ Runs the original's code or commands.
 | `traps` | boolean |  | Add semantic-trap cases (default true). |
 | `http` | boolean |  | The app is a server: `run` starts it (it takes its port from PORT or {port}); cases are requests from curl lines in its docs, `inputs` ({"name", "method", "path", "headers", "body"}) and traps. |
 | `port` | integer |  | A port the server always listens on (implies http). |
-| `effects` | string[] |  | Record what leaves the process: "http" (a local sink set as HTTP_PROXY, http_proxy and RUST_ANYTHING_HTTP_SINK) and "smtp" (a local mail server, SMTP_HOST and SMTP_PORT). Each case stores what reached them, in order, and replay compares it. |
+| `effects` | string[] |  | Record what leaves the process: "http" (a local sink set as HTTP_PROXY, http_proxy and RUST_ANYTHING_HTTP_SINK), "smtp" (a local mail server, SMTP_HOST and SMTP_PORT, recording decoded headers and MIME parts) and "smtp-raw" (raw MIME DATA). Each case stores what reached them, in order, and replay compares it. |
 | `effect_env` | string[] |  | Point the app's own settings at a sink: VAR=http-url, VAR=smtp-host, VAR=smtp-port or VAR=smtp-url. |
 | `db_reset` | string |  | Shell command that resets the database before each case (each start for servers); cases then run one at a time. |
 | `db_dump` | string |  | Shell command that prints the database's state (e.g. `sqlite3 app.db .dump`), run after each case or request and recorded with the effects. |
