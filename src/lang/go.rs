@@ -949,7 +949,7 @@ func Echo(p Point) Point { return p }"#,
 
     #[test]
     fn collects_exported_sentinel_errors() {
-        let src = format!(
+        let src = String::from(
             "package store\n\n\
              import (\n\
              \tstderrors \"errors\"\n\
@@ -966,7 +966,7 @@ func Echo(p Point) Point { return p }"#,
              \tErrA, ErrB = stderrors.New(\"a\"), stderrors.New(\"b\")\n\
              \terrPrivate = stderrors.New(\"private\")\n\
              \tMaxItems   = 100\n\
-             )\n"
+             )\n",
         );
         assert_eq!(
             sentinel_errors(&[src]),
