@@ -234,7 +234,7 @@ C# 的支持方式相同：`analyze` 会读取 `.csproj` 工程及其 NuGet 包�
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="赞助商：Santosh Yadav、Hakan Soytürk、Ali Yilmaz、Ashley Hunter、Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="赞助商：Santosh Yadav、Hakan Soytürk、Ali Yilmaz、Ashley Hunter、Fatih Uzuntaş、bugrcvi">
     </picture>
   </a>
 </p>

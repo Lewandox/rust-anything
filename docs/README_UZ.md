@@ -287,7 +287,7 @@ ortiga qo'yish mumkin; birliklarni P/Invoke orqali port qilish navbatda.
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Homiylar: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Homiylar: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş, bugrcvi">
     </picture>
   </a>
 </p>

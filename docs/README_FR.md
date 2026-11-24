@@ -296,7 +296,7 @@ petites méthodes plus lentes que .NET ; il n'y a pas encore de `shadow` pour C#
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Sponsors : Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Sponsors : Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş, bugrcvi">
     </picture>
   </a>
 </p>

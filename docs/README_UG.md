@@ -304,7 +304,7 @@ C# مۇ ئوخشاشلا ئىشلەيدۇ: `analyze` `.csproj` تۈرلىرى ۋ
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="ھامىيلار: Santosh Yadav، Hakan Soytürk، Ali Yilmaz، Ashley Hunter، Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="ھامىيلار: Santosh Yadav، Hakan Soytürk، Ali Yilmaz، Ashley Hunter، Fatih Uzuntaş، bugrcvi">
     </picture>
   </a>
 </p>

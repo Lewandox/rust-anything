@@ -452,6 +452,7 @@ fn tool_schemas() -> Value {
                 "module": { "type": "string", "description": "JS only: import the original from this JS module instead of the TS source." },
                 "resolve_from": { "type": "string", "description": "Resolve npm packages from this folder's node_modules." },
                 "float_tolerance": { "type": "number", "description": "Numeric code: floats match when they differ by at most this times the larger magnitude (absolute below 1), e.g. 1e-9. Saved with the crate for diff and gate; 0 removes it." },
+                "ignore_key_order": { "type": "boolean", "description": "Compare objects regardless of key order, now and in every later diff, gate, enable and report; false saves the opposite." },
                 "node_args": { "type": "array", "items": { "type": "string" }, "description": "Extra arguments for node, e.g. [\"--import=tsx\"]." },
                 "test_command": { "type": "array", "items": { "type": "string" }, "description": "TS/JS or Python: also record every call the original's own test suite makes to the unit's functions, e.g. [\"npx\", \"jest\"] or [\"pytest\"]. Runs in the original's folder." },
                 "profile": { "type": "string", "enum": ["host", "android"], "description": "Record on this machine (default) or on a connected Android device (JVM crates)." },
@@ -603,8 +604,8 @@ fn tool_schemas() -> Value {
                 "port": { "type": "integer", "description": "A port the server always listens on (implies http)." },
                 "effects": { "type": "array", "items": { "type": "string" }, "description": "Record what leaves the process: \"http\" (a local sink set as HTTP_PROXY, http_proxy and RUST_ANYTHING_HTTP_SINK) and \"smtp\" (a local mail server, SMTP_HOST and SMTP_PORT). Each case stores what reached them, in order, and replay compares it." },
                 "effect_env": { "type": "array", "items": { "type": "string" }, "description": "Point the app's own settings at a sink: VAR=http-url, VAR=smtp-host, VAR=smtp-port or VAR=smtp-url." },
-                "db_reset": { "type": "string", "description": "Shell command that resets the database before each case (each start for servers); cases then run one at a time." },
-                "db_dump": { "type": "string", "description": "Shell command that prints the database's state (e.g. `sqlite3 app.db .dump`), run after each case or request and recorded with the effects." },
+                "db_reset": { "type": "string", "description": "Shell command that resets the database before each case (each start for servers), run in the folder the case runs in; a script it names by a relative path with a script extension (.py, .sh, .js, .ts, .rb, .php, .pl, .ps1, .bat, .cmd, .sql and similar) is the repository's, while other relative paths, extensionless scripts included, are the case folder's. Cases then run one at a time." },
+                "db_dump": { "type": "string", "description": "Shell command that prints the database's state (e.g. `sqlite3 app.db .dump`), run after each case or request in the folder the case runs in, and recorded with the effects." },
                 "args": { "type": "array", "items": { "type": "string" }, "description": "Servers: arguments every start gets after its command, the original's and every build's ([\"db.json\"]). Implies http; saved." },
                 "fresh": { "type": "array", "items": { "type": "string" }, "description": "Repository files or folders the app reads or writes (a project tree, a database file), snapshotted and copied into a fresh working directory before every case (CLIs) or start (servers); a CLI's removed files are compared too. Saved." },
                 "pace": { "type": "integer", "description": "Servers: milliseconds to wait after each response, for work the server does after answering (a file watcher). Implies http; saved and used by replay; 0 removes it." },
@@ -749,6 +750,11 @@ fn call(name: &str, args: &Value) -> Result<Value> {
             if let Some(t) = args["float_tolerance"].as_f64() {
                 let mut manifest = bridge::Manifest::load(&crate_dir)?;
                 manifest.float_tolerance = (crate::tolerance::check(t)? > 0.0).then_some(t);
+                manifest.save(&crate_dir)?;
+            }
+            if let Some(on) = args["ignore_key_order"].as_bool() {
+                let mut manifest = bridge::Manifest::load(&crate_dir)?;
+                manifest.ignore_key_order = on;
                 manifest.save(&crate_dir)?;
             }
             let helper = match args["pin_clock"].as_bool() {

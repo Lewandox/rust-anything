@@ -258,7 +258,7 @@
     "benchPostRow": "POST /comments, 10 connessioni",
     "benchNote": "Dove il divario è piccolo: una connessione che legge l'intera lista di 10,000 post (1.2x) e le scritture sul database grande (da 1.1 a 1.2x), perché entrambe riscrivono l'intero file a ogni scrittura. [Tabelle complete](/docs/real-world/json-server)",
     "langsTitle": "Linguaggi",
-    "langsDesc": "Il linguaggio viene rilevato dal repository. Ogni linguaggio tranne C ottiene anche i batch: gli elementi attraversano il confine una volta e restano in Rust, su tutti i core.",
+    "langsDesc": "Il linguaggio viene rilevato dal repository. Ogni linguaggio tranne C, PHP, C# e PowerShell ottiene anche i batch: gli elementi attraversano il confine una volta e restano in Rust, su tutti i core.",
     "verified": "Verificato",
     "wholeApps": "Applicazioni intere",
     "langMeta": {

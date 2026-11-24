@@ -19,6 +19,19 @@ pub fn results(f: &ExportedFn) -> (Vec<String>, bool) {
     (parts, fallible)
 }
 
+/// The port type of a Go type whose range `i64` cannot hold (`uint64`, `uint`, `uintptr`), alone
+/// or as the items of a slice; `None` for every other type.
+pub fn unsigned_port_type(go: &str) -> Option<String> {
+    match go.trim() {
+        "uint64" | "uint" => Some("u64".into()),
+        "uintptr" => Some("usize".into()),
+        go => go
+            .strip_prefix("[]")
+            .and_then(unsigned_port_type)
+            .map(|item| format!("Vec<{item}>")),
+    }
+}
+
 fn split_top(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut depth = 0i32;
@@ -1822,6 +1835,7 @@ func Json(raw uint64) uint64 { return raw }"#,
             batches: vec![],
             allocator: Default::default(),
             float_tolerance: None,
+            ignore_key_order: false,
         };
         let mut api = crate::codegen::parse_port(&crate::codegen::port_rs(&manifest));
         crate::bridge::match_export_names(&manifest, &mut api);
@@ -1897,6 +1911,7 @@ func Lookup(id int) (string, error) {
             batches: vec![],
             allocator: Default::default(),
             float_tolerance: None,
+            ignore_key_order: false,
         };
         let mut api = crate::codegen::parse_port(&crate::codegen::port_rs(&manifest));
         crate::bridge::match_export_names(&manifest, &mut api);
@@ -1986,6 +2001,7 @@ func Lookup(id int) (string, error) {
             batches: vec![],
             allocator: Default::default(),
             float_tolerance: None,
+            ignore_key_order: false,
         };
         let drv = driver(&manifest, "example.com/app/store");
         std::fs::write(dir.join("drv/main.go"), drv).unwrap();

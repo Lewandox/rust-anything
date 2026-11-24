@@ -137,6 +137,13 @@ enum Cmd {
         /// below 1), e.g. 1e-9 for numeric code. Saved with the crate for diff and gate; 0 removes it.
         #[arg(long)]
         float_tolerance: Option<f64>,
+        /// Compare objects regardless of key order, now and in every later `diff`, `gate`, `enable`
+        /// and `report`. `--no-ignore-key-order` saves the opposite.
+        #[arg(long, overrides_with = "no_ignore_key_order")]
+        ignore_key_order: bool,
+        /// Save "keep the original's key order", undoing an earlier `--ignore-key-order`.
+        #[arg(long, overrides_with = "ignore_key_order")]
+        no_ignore_key_order: bool,
         /// Also record every call the original's own test suite makes to the unit's functions:
         /// `--from-tests -- npx jest` (TS/JS, any runner) or `-- pytest` (Python).
         #[arg(long)]
@@ -556,11 +563,14 @@ enum AppCmd {
         #[arg(long, value_name = "VAR=KIND")]
         effect_env: Vec<String>,
         /// A shell command run before each case (CLIs) or each start (servers) that resets the
-        /// database to a known state. Cases then run one at a time.
+        /// database to a known state. Cases then run one at a time. It runs in the folder the
+        /// case runs in; a script it names by a relative path with a script extension (`reset.py`,
+        /// `seed.sh`, `schema.sql`) is the repository's, other relative paths the case folder's.
         #[arg(long, value_name = "COMMAND")]
         db_reset: Option<String>,
         /// A shell command that prints the database's state (e.g. `sqlite3 app.db .dump`), run
-        /// after each case or request; its output is recorded with the effects.
+        /// after each case or request in the folder the case runs in; its output is recorded
+        /// with the effects.
         #[arg(long, value_name = "COMMAND")]
         db_dump: Option<String>,
         /// Print the machine-readable report as JSON.
@@ -780,6 +790,8 @@ fn run() -> Result<ExitCode> {
             resolve_from,
             node_args,
             float_tolerance,
+            ignore_key_order,
+            no_ignore_key_order,
             from_tests,
             test_command,
             profile,
@@ -819,6 +831,11 @@ fn run() -> Result<ExitCode> {
             if let Some(t) = float_tolerance {
                 let mut manifest = bridge::Manifest::load(&crate_dir)?;
                 manifest.float_tolerance = (rust_anything::tolerance::check(t)? > 0.0).then_some(t);
+                manifest.save(&crate_dir)?;
+            }
+            if ignore_key_order || no_ignore_key_order {
+                let mut manifest = bridge::Manifest::load(&crate_dir)?;
+                manifest.ignore_key_order = ignore_key_order;
                 manifest.save(&crate_dir)?;
             }
             if (pin_clock || no_pin_clock)
@@ -1607,6 +1624,18 @@ fn run_app(command: AppCmd) -> Result<ExitCode> {
             }
             if !outcome.timed_out.is_empty() {
                 say!("Timed out, not recorded: {}", outcome.timed_out.join(", "));
+            }
+            if !outcome.stale.is_empty() {
+                say!(
+                    "Removed, recorded before but not now: {}",
+                    outcome.stale.join(", ")
+                );
+            }
+            if !outcome.kept.is_empty() {
+                say!(
+                    "Kept, not from a recording (written by hand, or recorded before rust-anything listed its cases; delete them if they no longer apply): {}",
+                    outcome.kept.join(", ")
+                );
             }
         }
         AppCmd::Replay {

@@ -238,7 +238,7 @@ C# работает аналогичным образом: `analyze` читае�
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Спонсоры: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Спонсоры: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş, bugrcvi">
     </picture>
   </a>
 </p>

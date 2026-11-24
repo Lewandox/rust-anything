@@ -638,6 +638,7 @@ mod tests {
             batches: Vec::new(),
             allocator: Default::default(),
             float_tolerance: None,
+            ignore_key_order: false,
         };
         let outcome = DiffOutcome {
             total: 446,

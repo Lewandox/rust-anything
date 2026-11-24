@@ -398,7 +398,8 @@ fn record_node(opts: &RecordOptions, manifest: &Manifest, cases: &[Value]) -> Re
     std::fs::write(work.join("resolve.mjs"), RESOLVE_JS)?;
     std::fs::write(work.join("register.mjs"), REGISTER_JS)?;
     let register = work.canonical()?.join("register.mjs");
-    let mut node_args = vec![format!("--import={}", file_url(&register))];
+    let mut node_args: Vec<String> = strip_types_args().iter().map(|a| a.to_string()).collect();
+    node_args.push(format!("--import={}", file_url(&register)));
     node_args.extend(opts.node_args.iter().cloned());
     let aliases = alias_env(manifest);
     let resolve_from = opts
@@ -438,6 +439,33 @@ fn record_node(opts: &RecordOptions, manifest: &Manifest, cases: &[Value]) -> Re
         record(true)?;
     }
     Ok(out)
+}
+
+/// The flags Node needs to load `.ts` sources: none from 22.18 and 23.6, which strip types by
+/// default, but `--experimental-strip-types` on 22.6 to 22.17 and 23.0 to 23.5.
+fn strip_types_args() -> &'static [&'static str] {
+    static NEEDED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let needed = *NEEDED.get_or_init(|| {
+        let mut cmd = Command::new("node");
+        cmd.arg("--version");
+        crate::process::output(&mut cmd, crate::process::QUICK)
+            .ok()
+            .and_then(|out| crate::doctor::parse_version(&String::from_utf8_lossy(&out.stdout)))
+            .is_some_and(needs_strip_types_flag)
+    });
+    if needed {
+        &[
+            "--experimental-strip-types",
+            "--no-warnings=ExperimentalWarning",
+        ]
+    } else {
+        &[]
+    }
+}
+
+fn needs_strip_types_flag(node: crate::doctor::Version) -> bool {
+    let crate::doctor::Version(major, minor, _) = node;
+    (major == 22 && (6..18).contains(&minor)) || (major == 23 && minor < 6)
 }
 
 fn transform_flag() -> Option<&'static str> {
@@ -809,7 +837,8 @@ pub fn bench(opts: &BenchOptions) -> Result<Vec<BenchRow>> {
     let register = work.canonical()?.join("register.mjs");
     let mut cmd = Command::new("node");
     crate::enable::original_only(&mut cmd, &manifest);
-    cmd.args(transform_flag())
+    cmd.args(strip_types_args())
+        .args(transform_flag())
         .arg("--no-warnings")
         .arg(format!("--import={}", file_url(&register)))
         .args(opts.node_args)
@@ -837,6 +866,13 @@ pub struct DiffOptions<'a> {
     pub node_args: &'a [String],
     /// Floats match within this tolerance; the one saved by `record` when `None`.
     pub float_tolerance: Option<f64>,
+}
+
+/// Whether objects compare regardless of key order: the flag for this run, or the choice
+/// `record --ignore-key-order` saved with the crate, which `gate`, `enable`, `report` and `go` read
+/// because they have no flag of their own.
+fn ignores_key_order(opts: &DiffOptions) -> bool {
+    opts.ignore_key_order || Manifest::load(opts.crate_dir).is_ok_and(|m| m.ignore_key_order)
 }
 
 /// The first mismatches a diff reports.
@@ -963,7 +999,7 @@ pub(crate) fn settle(opts: &DiffOptions, exact: DiffOutcome) -> Result<DiffOutco
         outcome = crate::tolerance::apply(
             outcome,
             crate::tolerance::check(t)?,
-            opts.ignore_key_order || !preserve_key_order,
+            ignores_key_order(opts) || !preserve_key_order,
         );
     }
     Ok(crate::recording::apply_known(
@@ -993,7 +1029,7 @@ pub(crate) fn diff_exact(opts: &DiffOptions) -> Result<DiffOutcome> {
         && manifest.language == crate::lang::Lang::Python
         && opts.module.is_none()
     {
-        return crate::harness_py::diff(opts.crate_dir, &manifest, opts.ignore_key_order);
+        return crate::harness_py::diff(opts.crate_dir, &manifest, ignores_key_order(opts));
     }
     if let Ok(manifest) = Manifest::load(opts.crate_dir)
         && manifest.kind == Kind::CAbi
@@ -1065,13 +1101,14 @@ pub(crate) fn diff_exact(opts: &DiffOptions) -> Result<DiffOutcome> {
         format!("{CODEC_JS}\n{}\n{DIFF_JS}", crate::pin::PIN_JS),
     )?;
     let out = work.join("diff.json");
-    let flag = if opts.ignore_key_order {
+    let flag = if ignores_key_order(opts) {
         "sort"
     } else {
         "keep"
     };
     let mut cmd = Command::new("node");
-    cmd.args(opts.node_args)
+    cmd.args(strip_types_args())
+        .args(opts.node_args)
         .arg(&script)
         .args([&module, &cases, &out])
         .arg(flag);
@@ -2309,6 +2346,73 @@ writeFileSync(outPath, JSON.stringify(summary, null, 2))
 mod tests {
     use super::*;
     use crate::ts::exports::{ExportedFn, Param};
+
+    #[test]
+    fn a_saved_key_order_choice_is_read_by_diffs_without_the_flag() {
+        // `record --ignore-key-order` writes it; `gate`, `enable`, `report` and `go` have no flag of
+        // their own, so they inherit it from here.
+        let dir = std::env::temp_dir().join(format!("ra-key-order-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let opts = |flag: bool| DiffOptions {
+            crate_dir: &dir,
+            module: None,
+            ignore_key_order: flag,
+            node_args: &[],
+            float_tolerance: None,
+        };
+        // No crate at all: the flag alone decides, and nothing panics.
+        assert!(!ignores_key_order(&opts(false)));
+        assert!(ignores_key_order(&opts(true)));
+        // What `record` saves is what `gate`, `enable` and `report` read without the flag.
+        let manifest: Manifest = serde_json::from_value(serde_json::json!({
+            "schema": crate::bridge::SCHEMA,
+            "root": ".",
+            "unit": "src/util.ts",
+            "kind": "napi",
+            "crate_name": "util-rs",
+            "exports": [],
+        }))
+        .unwrap();
+        manifest.save(&dir).unwrap();
+        assert!(!ignores_key_order(&opts(false)));
+        let mut saved = Manifest::load(&dir).unwrap();
+        saved.ignore_key_order = true;
+        saved.save(&dir).unwrap();
+        assert!(ignores_key_order(&opts(false)));
+        saved.ignore_key_order = false;
+        saved.save(&dir).unwrap();
+        assert!(!ignores_key_order(&opts(false)));
+        assert!(ignores_key_order(&opts(true)));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn node_gets_the_strip_types_flag_only_where_it_needs_it() {
+        use crate::doctor::Version;
+        for (major, minor, patch) in [(22, 6, 0), (22, 14, 0), (22, 17, 1), (23, 0, 0), (23, 5, 9)]
+        {
+            assert!(
+                needs_strip_types_flag(Version(major, minor, patch)),
+                "{major}.{minor}.{patch}"
+            );
+        }
+        // Before 22.6 the flag does not exist (doctor asks for 22.6); from 22.18 and 23.6 Node
+        // strips types by default.
+        for (major, minor, patch) in [
+            (22, 5, 9),
+            (22, 18, 0),
+            (22, 20, 0),
+            (23, 6, 0),
+            (24, 13, 1),
+            (25, 0, 0),
+        ] {
+            assert!(
+                !needs_strip_types_flag(Version(major, minor, patch)),
+                "{major}.{minor}.{patch}"
+            );
+        }
+    }
 
     #[test]
     fn the_js_codec_keeps_marker_shaped_data_and_typed_arrays() {

@@ -258,7 +258,7 @@
     "benchPostRow": "POST /comments, 10 koneksi",
     "benchNote": "Di mana selisihnya kecil: satu koneksi yang membaca seluruh daftar 10,000 post (1.2x), dan penulisan ke basis data besar (1.1 hingga 1.2x), karena keduanya menulis ulang seluruh berkas pada setiap penulisan. [Tabel lengkap](/docs/real-world/json-server)",
     "langsTitle": "Bahasa",
-    "langsDesc": "Bahasa dideteksi dari repositori. Setiap bahasa selain C juga mendapat batch: elemen menyeberang sekali dan tetap di Rust, di semua inti.",
+    "langsDesc": "Bahasa dideteksi dari repositori. Setiap bahasa selain C, PHP, C#, dan PowerShell juga mendapat batch: elemen menyeberang sekali dan tetap di Rust, di semua inti.",
     "verified": "Terverifikasi",
     "wholeApps": "Aplikasi utuh",
     "langMeta": {

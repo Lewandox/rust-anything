@@ -258,7 +258,7 @@
     "benchPostRow": "POST /comments, 10 kết nối",
     "benchNote": "Nơi mức chênh lệch nhỏ: một kết nối đọc toàn bộ danh sách 10,000 bài (1.2x), và các lần ghi vào cơ sở dữ liệu lớn (1.1 đến 1.2x), vì cả hai đều ghi lại toàn bộ tệp sau mỗi lần ghi. [Bảng đầy đủ](/docs/real-world/json-server)",
     "langsTitle": "Ngôn ngữ",
-    "langsDesc": "Ngôn ngữ được nhận diện từ kho mã. Mọi ngôn ngữ trừ C đều có batch: các phần tử chỉ vượt biên một lần và ở lại trong Rust, trên mọi lõi.",
+    "langsDesc": "Ngôn ngữ được nhận diện từ kho mã. Mọi ngôn ngữ trừ C, PHP, C# và PowerShell đều có batch: các phần tử chỉ vượt biên một lần và ở lại trong Rust, trên mọi lõi.",
     "verified": "Đã kiểm chứng",
     "wholeApps": "Ứng dụng nguyên vẹn",
     "langMeta": {
