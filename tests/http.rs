@@ -1049,3 +1049,92 @@ fn an_interrupted_record_leaves_no_server_listening() {
         "the server still listens on port {port} after app record was interrupted"
     );
 }
+
+#[test]
+fn binary_and_multipart_uploads_record_and_replay() {
+    let Some(python) = common::python() else {
+        return;
+    };
+    let repo = std::env::temp_dir().join(format!(
+        "rust-anything-http-binary-upload-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&repo);
+    std::fs::create_dir_all(&repo).unwrap();
+
+    let png = vec![
+        0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0x42,
+    ];
+    std::fs::write(repo.join("photo.png"), &png).unwrap();
+    std::fs::write(
+        repo.join("README.md"),
+        "```sh\ncurl --data-binary @photo.png -H 'Content-Type: image/png' http://localhost:8080/upload\ncurl -F name=pic -F file=@photo.png http://localhost:8080/form\n```\n",
+    )
+    .unwrap();
+    std::fs::write(
+        repo.join("server.py"),
+        r#"import hashlib, http.server, os
+
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(n)
+        digest = hashlib.sha256(body).hexdigest()[:12]
+        ct = self.headers.get("Content-Type", "")
+        msg = f"{self.path}|{n}|{digest}|{ct.split(';')[0]}".encode()
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(msg)))
+        self.end_headers()
+        self.wfile.write(msg)
+    def log_message(self, *args):
+        pass
+
+port = int(os.environ["PORT"])
+http.server.HTTPServer(("127.0.0.1", port), H).serve_forever()
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        repo.join("inputs.jsonl"),
+        "{\"name\":\"bin-input\",\"method\":\"POST\",\"path\":\"/upload\",\"headers\":{\"Content-Type\":\"application/octet-stream\"},\"body_file\":\"photo.png\"}\n",
+    )
+    .unwrap();
+
+    let rec = app::record(&app::RecordOptions {
+        repo: &repo,
+        run: &[python.to_string(), "server.py".to_string()],
+        inputs: Some(&repo.join("inputs.jsonl")),
+        normalize: &[],
+        name: Some("upload"),
+        traps: false,
+        timeout_secs: Some(15),
+        http: true,
+        port: None,
+        server_args: &[],
+        fresh: &[],
+        pace_ms: None,
+        float_tolerance: None,
+        float_files: &[],
+        effects: None,
+    })
+    .unwrap();
+    assert_eq!(rec.cases, 3, "{rec:?}");
+    assert!(rec.unstable.is_empty(), "{rec:?}");
+    let http_dir = app::cases_dir(&repo).join("http");
+    let toml = std::fs::read_to_string(http_dir.join("bin-input.toml")).unwrap();
+    assert!(toml.contains("body_base64 ="), "{toml}");
+    let resp_body = std::fs::read_to_string(http_dir.join("bin-input.body")).unwrap();
+    assert!(resp_body.starts_with("/upload|11|"), "{resp_body}");
+
+    let rep = app::replay(&app::ReplayOptions {
+        repo: &repo,
+        build: None,
+        timeout_secs: Some(15),
+        port: None,
+        case: None,
+    })
+    .unwrap();
+    assert_eq!((rep.passed, rep.total), (3, 3), "{:?}", rep.failures);
+
+    std::fs::remove_dir_all(&repo).unwrap();
+}

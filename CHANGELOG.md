@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- HTTP cases support binary request bodies via `body_base64` and `body_file` in `--inputs` and case
+  `.toml` files, `curl --data-binary @file` reads raw bytes instead of UTF-8 text, and `curl -F` /
+  `--form` builds deterministic `multipart/form-data` uploads (#336).
+
 ## 4.1.0 (2026-11-24)
 
 - `enable --only <fn>` (repeatable) switches on just the named functions of a unit, and `--partial`
