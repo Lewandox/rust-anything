@@ -15,6 +15,166 @@ pub const EXT: &str = "effects";
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const SETTLE: Duration = Duration::from_secs(2);
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HttpResponseRule {
+    /// HTTP method token (case-sensitive per RFC 9110), or `*` to match any method.
+    pub method: String,
+    /// Path pattern (leading `/`), supporting `*` wildcards.
+    pub path: String,
+    pub status: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub body: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub body_base64: bool,
+}
+
+fn is_http_token(s: &str) -> bool {
+    !s.is_empty()
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b))
+}
+
+impl HttpResponseRule {
+    /// Parses `[METHOD ]/path=STATUS[ BODY|@FILE]`, loading `@FILE` relative to `repo`.
+    pub fn parse(spec: &str, repo: &Path) -> Result<Self> {
+        let trimmed = spec.trim();
+        let (first, after_first) = match trimmed.find(char::is_whitespace) {
+            Some(i) => (&trimmed[..i], trimmed[i..].trim_start()),
+            None => (trimmed, ""),
+        };
+        let (method, path_and_status, rest) = if first.starts_with('/') {
+            ("*".to_string(), first, after_first)
+        } else {
+            let (p_and_s, rest) = match after_first.find(char::is_whitespace) {
+                Some(i) => (&after_first[..i], after_first[i..].trim_start()),
+                None => (after_first, ""),
+            };
+            (first.to_string(), p_and_s, rest)
+        };
+        if method != "*" && !is_http_token(&method) {
+            bail!("--effect-response `{spec}`: invalid HTTP method `{method}`");
+        }
+        let (path, status_str) = path_and_status.rsplit_once('=').with_context(|| {
+            format!("--effect-response `{spec}`: give `METHOD /path=STATUS [BODY|@FILE]`")
+        })?;
+        if !path.starts_with('/') {
+            bail!("--effect-response `{spec}`: path `{path}` must start with `/`");
+        }
+        let status: u16 = status_str
+            .parse()
+            .ok()
+            .filter(|&s| (200..=599).contains(&s))
+            .with_context(|| {
+                format!(
+                    "--effect-response `{spec}`: invalid HTTP status `{status_str}` (expected 200-599)"
+                )
+            })?;
+
+        let (body, body_base64, content_type) = if rest.is_empty() {
+            (String::new(), false, None)
+        } else if let Some(file_spec) = rest.strip_prefix('@') {
+            let rel = file_spec.trim();
+            if rel.is_empty() {
+                bail!("--effect-response `{spec}`: missing file path after `@`");
+            }
+            let file_path = if Path::new(rel).is_absolute() {
+                std::path::PathBuf::from(rel)
+            } else {
+                repo.join(rel)
+            };
+            let bytes = std::fs::read(&file_path).with_context(|| {
+                format!(
+                    "--effect-response `{spec}`: cannot read `{}`",
+                    file_path.display()
+                )
+            })?;
+            let ext = file_path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(str::to_ascii_lowercase);
+            match String::from_utf8(bytes) {
+                Ok(text) => {
+                    let ct = infer_content_type(ext.as_deref(), &text);
+                    (text, false, Some(ct.to_string()))
+                }
+                Err(err) => {
+                    let raw = err.into_bytes();
+                    let ct = match ext.as_deref() {
+                        Some("json") => "application/json",
+                        Some("xml") => "application/xml",
+                        Some("html" | "htm") => "text/html; charset=utf-8",
+                        _ => "application/octet-stream",
+                    };
+                    (encode_base64(&raw), true, Some(ct.to_string()))
+                }
+            }
+        } else {
+            let ct = infer_content_type(None, rest);
+            (rest.to_string(), false, Some(ct.to_string()))
+        };
+
+        Ok(Self {
+            method,
+            path: path.to_string(),
+            status,
+            content_type,
+            body,
+            body_base64,
+        })
+    }
+
+    fn matches(&self, method: &str, target: &str) -> bool {
+        if self.method != "*" && self.method != method {
+            return false;
+        }
+        let req_path = request_path(target);
+        let candidate = if self.path.contains('?') {
+            req_path.as_ref()
+        } else {
+            req_path.split('?').next().unwrap_or(req_path.as_ref())
+        };
+        glob_match(&self.path, candidate)
+    }
+
+    fn response_bytes(&self, request_method: &str) -> Vec<u8> {
+        let body = if self.body_base64 {
+            decode_base64(self.body.as_bytes())
+        } else {
+            self.body.as_bytes().to_vec()
+        };
+        let mut head = format!(
+            "HTTP/1.1 {} {}\r\n",
+            self.status,
+            status_reason(self.status)
+        );
+        let no_body_status = self.status == 204 || self.status == 304;
+        let is_head = request_method == "HEAD";
+        if !no_body_status && let Some(ct) = &self.content_type {
+            head.push_str(&format!("Content-Type: {ct}\r\n"));
+        }
+        if no_body_status {
+            head.push_str("Connection: close\r\n\r\n");
+            return head.into_bytes();
+        }
+        if is_head {
+            if !body.is_empty() {
+                head.push_str(&format!("Content-Length: {}\r\n", body.len()));
+            }
+            head.push_str("Connection: close\r\n\r\n");
+            return head.into_bytes();
+        }
+        head.push_str(&format!(
+            "Content-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        ));
+        let mut out = head.into_bytes();
+        out.extend_from_slice(&body);
+        out
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EffectsConfig {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -27,6 +187,9 @@ pub struct EffectsConfig {
     pub smtp_parts: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
+    /// Canned responses for the HTTP effect sink, matched in order; unmatched requests get `200 {}`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub http_responses: Vec<HttpResponseRule>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub db_reset: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -47,6 +210,17 @@ impl EffectsConfig {
     pub fn from_args(
         kinds: &[String],
         env: &[String],
+        db_reset: Option<&str>,
+        db_dump: Option<&str>,
+    ) -> Result<Option<Self>> {
+        Self::from_args_with_responses(kinds, env, &[], Path::new("."), db_reset, db_dump)
+    }
+
+    pub fn from_args_with_responses(
+        kinds: &[String],
+        env: &[String],
+        responses: &[String],
+        repo: &Path,
         db_reset: Option<&str>,
         db_dump: Option<&str>,
     ) -> Result<Option<Self>> {
@@ -80,6 +254,12 @@ impl EffectsConfig {
                 config.smtp = true;
             }
             config.env.insert(var.to_string(), kind.to_string());
+        }
+        for spec in responses {
+            config
+                .http_responses
+                .push(HttpResponseRule::parse(spec, repo)?);
+            config.http = true;
         }
         config.smtp_parts = config.smtp && !raw;
         config.db_reset = db_reset.map(str::to_string);
@@ -115,16 +295,25 @@ impl Sinks {
         let active = Arc::new(AtomicUsize::new(0));
         let http = config
             .http
-            .then(|| listen(&events, &active, serve_http))
+            .then(|| {
+                let rules = Arc::new(config.http_responses.clone());
+                listen(&events, &active, move |stream, ev| {
+                    serve_http(stream, ev, &rules);
+                })
+            })
             .transpose()?;
-        let smtp_handler: Handler = if config.smtp_parts {
-            serve_smtp
-        } else {
-            serve_smtp_raw
-        };
+        let smtp_parts = config.smtp_parts;
         let smtp = config
             .smtp
-            .then(|| listen(&events, &active, smtp_handler))
+            .then(|| {
+                listen(&events, &active, move |stream, ev| {
+                    if smtp_parts {
+                        serve_smtp(stream, ev);
+                    } else {
+                        serve_smtp_raw(stream, ev);
+                    }
+                })
+            })
             .transpose()?;
         Ok(Sinks {
             config: config.clone(),
@@ -449,25 +638,28 @@ fn shell(
     crate::process::output(&mut c, crate::process::QUICK)
 }
 
-type Handler = fn(TcpStream, &Mutex<Vec<String>>);
-
-fn listen(
+fn listen<F>(
     events: &Arc<Mutex<Vec<String>>>,
     active: &Arc<AtomicUsize>,
-    handler: Handler,
-) -> Result<Sink> {
+    handler: F,
+) -> Result<Sink>
+where
+    F: Fn(TcpStream, &Mutex<Vec<String>>) + Send + Sync + 'static,
+{
     let listener = TcpListener::bind("127.0.0.1:0").context("starting an effect sink")?;
     listener.set_nonblocking(true)?;
     let port = listener.local_addr()?.port();
     let stop = Arc::new(AtomicBool::new(false));
     let (events, active, flag) = (events.clone(), active.clone(), stop.clone());
+    let handler = Arc::new(handler);
     let thread = std::thread::spawn(move || {
         while !flag.load(Ordering::SeqCst) {
             match listener.accept() {
                 Ok((stream, _)) => {
                     let _ = stream.set_nonblocking(false);
                     let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
-                    let (events, active) = (events.clone(), active.clone());
+                    let (events, active, handler) =
+                        (events.clone(), active.clone(), handler.clone());
                     active.fetch_add(1, Ordering::SeqCst);
                     std::thread::spawn(move || {
                         handler(stream, &events);
@@ -498,7 +690,7 @@ fn body_text(body: &[u8]) -> String {
     }
 }
 
-fn serve_http(mut stream: TcpStream, events: &Mutex<Vec<String>>) {
+fn serve_http(mut stream: TcpStream, events: &Mutex<Vec<String>>, rules: &[HttpResponseRule]) {
     let mut reader = BufReader::new(match stream.try_clone() {
         Ok(s) => s,
         Err(_) => return,
@@ -562,6 +754,7 @@ fn serve_http(mut stream: TcpStream, events: &Mutex<Vec<String>>) {
             body.clear();
         }
     }
+    let matched = rules.iter().find(|r| r.matches(&method, &target));
     let url = if target.starts_with("http://") || target.starts_with("https://") {
         target
     } else {
@@ -585,9 +778,153 @@ fn serve_http(mut stream: TcpStream, events: &Mutex<Vec<String>>) {
         }
     }
     push(events, event);
-    let _ = stream.write_all(
-        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
-    );
+    let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
+    if let Some(rule) = matched {
+        let _ = stream.write_all(&rule.response_bytes(&method));
+    } else if method == "HEAD" {
+        let _ = stream.write_all(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n",
+        );
+    } else {
+        let _ = stream.write_all(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+        );
+    }
+}
+
+fn request_path(target: &str) -> std::borrow::Cow<'_, str> {
+    if let Some(rest) = target
+        .strip_prefix("http://")
+        .or_else(|| target.strip_prefix("https://"))
+    {
+        match rest.find(['/', '?']) {
+            Some(i) if rest.as_bytes()[i] == b'/' => std::borrow::Cow::Borrowed(&rest[i..]),
+            Some(i) => std::borrow::Cow::Owned(format!("/{}", &rest[i..])),
+            None => std::borrow::Cow::Borrowed("/"),
+        }
+    } else if target.starts_with('?') {
+        std::borrow::Cow::Owned(format!("/{target}"))
+    } else {
+        std::borrow::Cow::Borrowed(target)
+    }
+}
+
+fn glob_match(pattern: &str, text: &str) -> bool {
+    let (p, t) = (pattern.as_bytes(), text.as_bytes());
+    let (mut pi, mut ti) = (0usize, 0usize);
+    let mut star = None;
+    let mut match_ti = 0usize;
+    while ti < t.len() {
+        if pi < p.len() && p[pi] == b'*' {
+            star = Some(pi);
+            match_ti = ti;
+            pi += 1;
+        } else if pi < p.len() && p[pi] == t[ti] {
+            pi += 1;
+            ti += 1;
+        } else if let Some(s) = star {
+            pi = s + 1;
+            match_ti += 1;
+            ti = match_ti;
+        } else {
+            return false;
+        }
+    }
+    while pi < p.len() && p[pi] == b'*' {
+        pi += 1;
+    }
+    pi == p.len()
+}
+
+fn infer_content_type(ext: Option<&str>, text: &str) -> &'static str {
+    match ext {
+        Some("json") => "application/json",
+        Some("xml") => "application/xml",
+        Some("html" | "htm") => "text/html; charset=utf-8",
+        Some("txt") => "text/plain; charset=utf-8",
+        _ => {
+            let trimmed = text.trim_start();
+            if trimmed.starts_with('{') || trimmed.starts_with('[') {
+                "application/json"
+            } else {
+                "text/plain; charset=utf-8"
+            }
+        }
+    }
+}
+
+fn status_reason(status: u16) -> &'static str {
+    match status {
+        200 => "OK",
+        201 => "Created",
+        202 => "Accepted",
+        204 => "No Content",
+        301 => "Moved Permanently",
+        302 => "Found",
+        304 => "Not Modified",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        409 => "Conflict",
+        410 => "Gone",
+        422 => "Unprocessable Entity",
+        429 => "Too Many Requests",
+        500 => "Internal Server Error",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
+        504 => "Gateway Timeout",
+        _ => "Status",
+    }
+}
+
+fn encode_base64(input: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
+        out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            TABLE[((n >> 6) & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[(n & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+fn decode_base64(input: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(input.len() * 3 / 4);
+    let mut buf = 0u32;
+    let mut bits = 0u8;
+    for &b in input {
+        let val = match b {
+            b'A'..=b'Z' => b - b'A',
+            b'a'..=b'z' => b - b'a' + 26,
+            b'0'..=b'9' => b - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            b'=' => break,
+            _ => continue,
+        };
+        buf = (buf << 6) | u32::from(val);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buf >> bits) as u8);
+        }
+    }
+    out
 }
 
 fn serve_smtp(stream: TcpStream, events: &Mutex<Vec<String>>) {
@@ -997,5 +1334,167 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(c.smtp && !c.http && c.serial());
+    }
+
+    #[test]
+    fn http_effect_responses_match_method_wildcards_fixtures_and_fallback() {
+        let dir =
+            std::env::temp_dir().join(format!("rust-anything-http-resp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("fixtures")).unwrap();
+        std::fs::write(
+            dir.join("fixtures/charge.json"),
+            r#"{"id":"ch_123","ok":true}"#,
+        )
+        .unwrap();
+
+        let config = EffectsConfig::from_args_with_responses(
+            &[],
+            &["API_URL=http-url".into()],
+            &[
+                "POST /v1/charges=201 @fixtures/charge.json".into(),
+                "POST /hooks/ok=202 accepted".into(),
+                "POST /hooks/*=500".into(),
+                "GET /token=200 {\"token\":\"abc\"}".into(),
+            ],
+            &dir,
+            None,
+            None,
+        )
+        .unwrap()
+        .unwrap();
+        assert!(config.http);
+        assert_eq!(config.http_responses.len(), 4);
+        // Round-trip through JSON (as saved in rust-anything.json for replay).
+        let saved: EffectsConfig =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        assert_eq!(saved, config);
+
+        let sinks = Sinks::start(&saved).unwrap();
+        let env: BTreeMap<String, String> = sinks.env().into_iter().collect();
+        let port: u16 = env["API_URL"].rsplit(':').next().unwrap().parse().unwrap();
+
+        // Exact match with @fixture via proxy-style absolute URL + query string.
+        let r1 = send(
+            port,
+            "POST http://pay.example/v1/charges?dry=1 HTTP/1.1\r\nHost: pay.example\r\nContent-Length: 2\r\n\r\n{}",
+        );
+        assert!(r1.starts_with("HTTP/1.1 201 Created\r\n"), "{r1}");
+        assert!(r1.contains("Content-Type: application/json\r\n"), "{r1}");
+        assert!(r1.ends_with(r#"{"id":"ch_123","ok":true}"#), "{r1}");
+
+        // First matching rule wins (`POST /hooks/ok` before `POST /hooks/*`).
+        let r2 = send(
+            port,
+            "POST /hooks/ok HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n",
+        );
+        assert!(r2.starts_with("HTTP/1.1 202 Accepted\r\n"), "{r2}");
+        assert!(r2.ends_with("accepted"), "{r2}");
+
+        // Wildcard match with status only (empty body).
+        let r3 = send(
+            port,
+            "POST /hooks/v2/fail HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n",
+        );
+        assert!(
+            r3.starts_with("HTTP/1.1 500 Internal Server Error\r\n"),
+            "{r3}"
+        );
+        assert!(r3.contains("Content-Length: 0\r\n"), "{r3}");
+
+        // Method mismatch falls back to default `200 {}`.
+        let r4 = send(
+            port,
+            "GET /hooks/v2/fail HTTP/1.1\r\nHost: localhost\r\n\r\n",
+        );
+        assert!(r4.starts_with("HTTP/1.1 200 OK\r\n"), "{r4}");
+        assert!(r4.ends_with("{}"), "{r4}");
+
+        // Inline JSON body.
+        let r5 = send(port, "GET /token HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        assert!(r5.starts_with("HTTP/1.1 200 OK\r\n"), "{r5}");
+        assert!(r5.ends_with(r#"{"token":"abc"}"#), "{r5}");
+
+        // Validation errors for malformed specs (including 1xx interim statuses).
+        assert!(HttpResponseRule::parse("no-equals", &dir).is_err());
+        assert!(HttpResponseRule::parse("POST relative=200", &dir).is_err());
+        assert!(HttpResponseRule::parse("POST /x=103", &dir).is_err());
+        assert!(HttpResponseRule::parse("POST /x=999", &dir).is_err());
+        assert!(HttpResponseRule::parse("POST /x=200 @fixtures/missing.json", &dir).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn http_effect_responses_follow_rfc_matching_and_body_rules() {
+        let dir = Path::new(".");
+        // Query patterns with `=` inside the query string.
+        let q_rule =
+            HttpResponseRule::parse("GET /items?mode=full=201 {\"ok\":true}", dir).unwrap();
+        assert_eq!(q_rule.method, "GET");
+        assert_eq!(q_rule.path, "/items?mode=full");
+        assert_eq!(q_rule.status, 201);
+        assert_eq!(q_rule.body, "{\"ok\":true}");
+        assert!(q_rule.matches("GET", "/items?mode=full"));
+        assert!(!q_rule.matches("GET", "/items?mode=short"));
+
+        // Case-sensitive HTTP methods and RFC 9110 method tokens with punctuation.
+        let upper = HttpResponseRule::parse("POST /x=201", dir).unwrap();
+        let lower = HttpResponseRule::parse("post /x=410", dir).unwrap();
+        assert!(upper.matches("POST", "/x"));
+        assert!(!upper.matches("post", "/x"));
+        assert!(lower.matches("post", "/x"));
+        assert!(!lower.matches("POST", "/x"));
+
+        let msearch = HttpResponseRule::parse("M-SEARCH /devices=201 ok", dir).unwrap();
+        assert_eq!(msearch.method, "M-SEARCH");
+        assert!(msearch.matches("M-SEARCH", "/devices"));
+
+        // Wildcard `*` when input contains a literal `*`, and absolute URI with query before `/`.
+        let star = HttpResponseRule::parse("GET /a*b=201", dir).unwrap();
+        assert!(star.matches("GET", "/axb"));
+        assert!(star.matches("GET", "/a*xb"));
+        let abs_q = HttpResponseRule::parse("GET /?next/*=201", dir).unwrap();
+        assert!(abs_q.matches("GET", "/?next/foo"));
+        assert!(abs_q.matches("GET", "http://example.test?next/foo"));
+
+        // RFC 9110 body & Content-Length suppression for 204, 304, and HEAD.
+        let r204 = String::from_utf8(
+            HttpResponseRule::parse("GET /x=204", dir)
+                .unwrap()
+                .response_bytes("GET"),
+        )
+        .unwrap();
+        assert!(r204.starts_with("HTTP/1.1 204 No Content\r\n"), "{r204}");
+        assert!(!r204.contains("Content-Length"), "{r204}");
+        assert!(r204.ends_with("\r\n\r\n"), "{r204}");
+
+        let r304 = String::from_utf8(
+            HttpResponseRule::parse("GET /x=304 stale", dir)
+                .unwrap()
+                .response_bytes("GET"),
+        )
+        .unwrap();
+        assert!(r304.starts_with("HTTP/1.1 304 Not Modified\r\n"), "{r304}");
+        assert!(!r304.contains("Content-Length"), "{r304}");
+        assert!(r304.ends_with("\r\n\r\n"), "{r304}");
+
+        let head_body = String::from_utf8(
+            HttpResponseRule::parse("HEAD /x=200 sample", dir)
+                .unwrap()
+                .response_bytes("HEAD"),
+        )
+        .unwrap();
+        assert!(head_body.contains("Content-Length: 6\r\n"), "{head_body}");
+        assert!(head_body.ends_with("\r\n\r\n"), "{head_body}");
+
+        let head_empty = String::from_utf8(
+            HttpResponseRule::parse("HEAD /x=200", dir)
+                .unwrap()
+                .response_bytes("HEAD"),
+        )
+        .unwrap();
+        assert!(!head_empty.contains("Content-Length"), "{head_empty}");
+        assert!(head_empty.ends_with("\r\n\r\n"), "{head_empty}");
     }
 }

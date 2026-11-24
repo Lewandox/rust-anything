@@ -604,6 +604,7 @@ fn tool_schemas() -> Value {
                 "port": { "type": "integer", "description": "A port the server always listens on (implies http)." },
                 "effects": { "type": "array", "items": { "type": "string" }, "description": "Record what leaves the process: \"http\" (a local sink set as HTTP_PROXY, http_proxy and RUST_ANYTHING_HTTP_SINK), \"smtp\" (a local mail server, SMTP_HOST and SMTP_PORT, recording decoded headers and MIME parts) and \"smtp-raw\" (raw MIME DATA). Each case stores what reached them, in order, and replay compares it." },
                 "effect_env": { "type": "array", "items": { "type": "string" }, "description": "Point the app's own settings at a sink: VAR=http-url, VAR=smtp-host, VAR=smtp-port or VAR=smtp-url." },
+                "effect_response": { "type": "array", "items": { "type": "string" }, "description": "Canned responses for the HTTP effect sink: \"METHOD /path=STATUS [BODY|@FILE]\" (e.g. \"POST /v1/charges=201 @fixtures/charge.json\", \"POST /hooks/*=500\"). Matched in order with `*` wildcards, falling back to `200 {}`. Enables the outbound HTTP effect (`effects: [\"http\"]`, not server mode); saved for replay." },
                 "db_reset": { "type": "string", "description": "Shell command that resets the database before each case (each start for servers), run in the folder the case runs in; a script it names by a relative path with a script extension (.py, .sh, .js, .ts, .rb, .php, .pl, .ps1, .bat, .cmd, .sql and similar) is the repository's, while other relative paths, extensionless scripts included, are the case folder's. Cases then run one at a time." },
                 "db_dump": { "type": "string", "description": "Shell command that prints the database's state (e.g. `sqlite3 app.db .dump`), run after each case or request in the folder the case runs in, and recorded with the effects." },
                 "args": { "type": "array", "items": { "type": "string" }, "description": "Servers: arguments every start gets after its command, the original's and every build's ([\"db.json\"]). Implies http; saved." },
@@ -1019,9 +1020,23 @@ fn call(name: &str, args: &Value) -> Result<Value> {
         "app_record" => {
             let repo = path("repo")?;
             let inputs = opt_path("inputs");
-            let effects = crate::effects::EffectsConfig::from_args(
+            let effect_response = match args.get("effect_response") {
+                None | Some(Value::Null) => Vec::new(),
+                Some(Value::Array(items)) => items
+                    .iter()
+                    .map(|v| {
+                        v.as_str().map(ToString::to_string).ok_or_else(|| {
+                            anyhow::anyhow!("effect_response must be an array of strings")
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?,
+                Some(_) => anyhow::bail!("effect_response must be an array of strings"),
+            };
+            let effects = crate::effects::EffectsConfig::from_args_with_responses(
                 &strings("effects"),
                 &strings("effect_env"),
+                &effect_response,
+                &repo,
                 args["db_reset"].as_str(),
                 args["db_dump"].as_str(),
             )?;
@@ -1395,5 +1410,19 @@ mod tests {
         assert_eq!(progress[1]["params"]["progress"], 1);
         assert_eq!(progress[1]["params"]["total"], 1);
         assert!(progress[1]["params"]["message"].is_string());
+    }
+
+    #[test]
+    fn app_record_rejects_non_string_array_effect_response() {
+        let bad_str = call(
+            "app_record",
+            &json!({ "repo": ".", "effect_response": "GET /x=201" }),
+        );
+        assert!(bad_str.is_err());
+        let bad_mixed = call(
+            "app_record",
+            &json!({ "repo": ".", "effect_response": ["GET /x=201", 42] }),
+        );
+        assert!(bad_mixed.is_err());
     }
 }

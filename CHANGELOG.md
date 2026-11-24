@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `app record --effect-response 'METHOD /path=STATUS [BODY|@FILE]'` (and MCP `app_record`'s
+  `effect_response`) lets the HTTP effect sink answer matching requests (supporting `*` wildcards)
+  with canned statuses and bodies, saved with the cases so replay sees identical replies (#334).
+
 ## 4.1.0 (2026-11-24)
 
 - `enable --only <fn>` (repeatable) switches on just the named functions of a unit, and `--partial`
