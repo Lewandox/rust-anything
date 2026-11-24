@@ -897,7 +897,7 @@ fn parse_form_part(
             type_override = Some(unquote_form_value(v.trim()));
         } else if let Some(v) = trimmed.strip_prefix("filename=") {
             filename_override = Some(unquote_form_value(v.trim()));
-        } else if trimmed.starts_with("headers=") {
+        } else if trimmed.starts_with("headers=") || trimmed.starts_with("encoder=") {
             return None;
         } else if let Some(ct) = type_override.as_mut() {
             // Curl treats parameters after `;type=` (e.g. `;charset=UTF-8`) as part of the media type.
@@ -2445,10 +2445,18 @@ mod tests {
             with_multipart_boundary("multipart/form-data; profile=\"a;b\"; boundary=old", "new"),
             "multipart/form-data; profile=\"a;b\"; boundary=new"
         );
-        // Unsupported curl `-F '...;headers=...'` is declined rather than appended to field value.
+        // Unsupported curl `-F '...;headers=...'` and `encoder=` are declined cleanly.
         assert!(
             parse_curl(
                 "curl -F 'submit=OK;headers=\"X-Submit-Type: OK\"' http://localhost:8080/h",
+                &root,
+                &root,
+            )
+            .is_none()
+        );
+        assert!(
+            parse_curl(
+                "curl -F 'note=hello;type=text/plain;encoder=base64' http://localhost:8080/h",
                 &root,
                 &root,
             )
