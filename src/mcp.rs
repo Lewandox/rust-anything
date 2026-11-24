@@ -969,8 +969,7 @@ fn call(name: &str, args: &Value) -> Result<Value> {
             };
             let on = if partial || (!only.is_empty() && !force) {
                 harness::build(&crate_dir)?;
-                let d = harness::diff_full(&diff_opts)?;
-                let counts = harness::per_function_counts(&crate_dir, &d)?;
+                let (d, counts) = harness::diff_full_with_counts(&diff_opts)?;
                 let manifest = bridge::Manifest::load(&crate_dir)?;
                 let (selected, skipped) =
                     crate::enable::select_matching(&manifest, &d, &counts, &only)?;
