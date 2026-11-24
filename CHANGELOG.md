@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `app record` spreads CLI and HTTP traps round-robin across every base case, deduplicates traps
+  before capping at 300, always keeps the HTTP unknown-route probe (`GET /rust-anything-missing`),
+  and reports how many traps were dropped (`traps_dropped` in JSON and CLI output) (#335).
+
 ## 4.1.0 (2026-11-24)
 
 - `enable --only <fn>` (repeatable) switches on just the named functions of a unit, and `--partial`

@@ -1585,14 +1585,26 @@ fn run_app(command: AppCmd) -> Result<ExitCode> {
                 say!("{}", serde_json::to_string_pretty(&outcome)?);
                 return Ok(ExitCode::SUCCESS);
             }
-            say!(
-                "Recorded {} in {} ({} from examples, {} from inputs, {} traps)",
-                counted(outcome.cases, "case"),
-                outcome.dir.display(),
-                outcome.examples,
-                outcome.inputs,
-                outcome.traps
-            );
+            if outcome.traps_dropped > 0 {
+                say!(
+                    "Recorded {} in {} ({} from examples, {} from inputs, {} traps, {} dropped)",
+                    counted(outcome.cases, "case"),
+                    outcome.dir.display(),
+                    outcome.examples,
+                    outcome.inputs,
+                    outcome.traps,
+                    counted(outcome.traps_dropped, "trap")
+                );
+            } else {
+                say!(
+                    "Recorded {} in {} ({} from examples, {} from inputs, {} traps)",
+                    counted(outcome.cases, "case"),
+                    outcome.dir.display(),
+                    outcome.examples,
+                    outcome.inputs,
+                    outcome.traps
+                );
+            }
             for (kind, what) in [
                 (
                     app::NoiseKind::Lines,

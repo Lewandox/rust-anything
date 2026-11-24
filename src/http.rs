@@ -903,9 +903,14 @@ fn trap_values(raw: &str) -> Vec<&'static str> {
     }
 }
 
-fn traps(bases: &[Req]) -> Vec<Req> {
-    let mut out = Vec::new();
+fn req_key(req: &Req) -> String {
+    serde_json::to_string(req).unwrap_or_default()
+}
+
+fn traps(bases: &[Req]) -> (Vec<Req>, usize) {
+    let mut per_base = Vec::with_capacity(bases.len());
     for base in bases {
+        let mut slots: Vec<Vec<Req>> = Vec::new();
         let (path, query) = match base.path.split_once('?') {
             Some((p, q)) => (p, Some(q)),
             None => (base.path.as_str(), None),
@@ -913,12 +918,20 @@ fn traps(bases: &[Req]) -> Vec<Req> {
         let segments: Vec<&str> = path.split('/').collect();
         for i in 2..segments.len() {
             let raw = percent_decode(segments[i]);
-            for v in trap_values(&raw).into_iter().filter(|v| *v != raw) {
-                let mut parts: Vec<String> = segments.iter().map(|s| s.to_string()).collect();
-                parts[i] = percent_encode(v);
-                let mut req = base.clone();
-                req.path = parts.join("/") + &query.map(|q| format!("?{q}")).unwrap_or_default();
-                out.push(req);
+            let slot: Vec<Req> = trap_values(&raw)
+                .into_iter()
+                .filter(|v| *v != raw)
+                .map(|v| {
+                    let mut parts: Vec<String> = segments.iter().map(|s| s.to_string()).collect();
+                    parts[i] = percent_encode(v);
+                    let mut req = base.clone();
+                    req.path =
+                        parts.join("/") + &query.map(|q| format!("?{q}")).unwrap_or_default();
+                    req
+                })
+                .collect();
+            if !slot.is_empty() {
+                slots.push(slot);
             }
         }
         if let Some(query) = query {
@@ -928,12 +941,19 @@ fn traps(bases: &[Req]) -> Vec<Req> {
                     continue;
                 };
                 let raw = percent_decode(raw);
-                for v in trap_values(&raw).into_iter().filter(|v| *v != raw) {
-                    let mut new: Vec<String> = pairs.iter().map(|p| p.to_string()).collect();
-                    new[i] = format!("{key}={}", percent_encode(v));
-                    let mut req = base.clone();
-                    req.path = format!("{path}?{}", new.join("&"));
-                    out.push(req);
+                let slot: Vec<Req> = trap_values(&raw)
+                    .into_iter()
+                    .filter(|v| *v != raw)
+                    .map(|v| {
+                        let mut new: Vec<String> = pairs.iter().map(|p| p.to_string()).collect();
+                        new[i] = format!("{key}={}", percent_encode(v));
+                        let mut req = base.clone();
+                        req.path = format!("{path}?{}", new.join("&"));
+                        req
+                    })
+                    .collect();
+                if !slot.is_empty() {
+                    slots.push(slot);
                 }
             }
         }
@@ -945,21 +965,33 @@ fn traps(bases: &[Req]) -> Vec<Req> {
             } else {
                 &app::STDIN_TRAPS
             };
-            for v in values {
-                let mut req = base.clone();
-                req.body = Some(v.to_string());
-                out.push(req);
-            }
+            slots.push(
+                values
+                    .iter()
+                    .map(|v| {
+                        let mut req = base.clone();
+                        req.body = Some(v.to_string());
+                        req
+                    })
+                    .collect(),
+            );
         }
+        per_base.push(app::interleave(slots));
     }
-    out.push(Req {
+    let unknown_route = Req {
         method: "GET".to_string(),
         path: "/rust-anything-missing".to_string(),
         headers: BTreeMap::new(),
         body: None,
-    });
-    out.truncate(app::MAX_TRAPS);
-    out
+    };
+    let existing: BTreeSet<_> = bases.iter().map(req_key).collect();
+    app::spread_traps(
+        per_base,
+        vec![unknown_route],
+        &existing,
+        req_key,
+        app::MAX_TRAPS,
+    )
 }
 
 fn case_slug(req: &Req) -> String {
@@ -1059,8 +1091,7 @@ pub(crate) fn record(
     let mut counts = [0usize; 3];
     let mut bases = Vec::new();
     let mut push = |kind: usize, given: Option<String>, req: Req| -> bool {
-        let key = serde_json::to_string(&req).unwrap_or_default();
-        if !seen.insert(key) {
+        if !seen.insert(req_key(&req)) {
             return false;
         }
         counts[kind] += 1;
@@ -1093,8 +1124,11 @@ pub(crate) fn record(
         push(0, None, root.clone());
         bases.push(root);
     }
+    let mut traps_dropped = 0usize;
     if opts.traps {
-        for req in traps(&bases) {
+        let (generated, dropped) = traps(&bases);
+        traps_dropped = dropped;
+        for req in generated {
             push(2, None, req);
         }
     }
@@ -1137,6 +1171,7 @@ pub(crate) fn record(
         examples: counts[0],
         inputs: counts[1],
         traps: counts[2],
+        traps_dropped,
         noisy: Vec::new(),
         noise: Vec::new(),
         unstable: Vec::new(),
@@ -1746,7 +1781,8 @@ mod tests {
             headers: BTreeMap::new(),
             body: Some("{\"a\":1}".into()),
         };
-        let t = traps(&[base]);
+        let (t, dropped) = traps(&[base]);
+        assert_eq!(dropped, 0);
         assert!(t.iter().any(|r| r.path == "/div/-7/2?name=bob"));
         assert!(t.iter().any(|r| r.path == "/div/7/0?name=bob"));
         assert!(
@@ -1768,5 +1804,66 @@ mod tests {
         assert_eq!(percent_decode("%2b"), "+");
         assert_eq!(percent_decode("%2B"), "+");
         assert_eq!(percent_decode("%4"), "%4");
+    }
+
+    #[test]
+    fn http_traps_spread_across_all_endpoints_keep_unknown_route_and_deduplicate() {
+        // 40 endpoints each with a numeric path segment and a query param -> > 300 unique traps.
+        let bases: Vec<Req> = (0..40)
+            .map(|i| Req {
+                method: "GET".into(),
+                path: format!("/ep{i:02}/7?name=bob"),
+                headers: BTreeMap::new(),
+                body: None,
+            })
+            .collect();
+        let (t, dropped) = traps(&bases);
+        assert_eq!(t.len(), app::MAX_TRAPS);
+        assert!(dropped > 0);
+        // Unknown-route probe is always kept even when traps exceed MAX_TRAPS.
+        assert!(
+            t.iter()
+                .any(|r| r.method == "GET" && r.path == "/rust-anything-missing"),
+            "unknown-route trap was dropped"
+        );
+        // Every single endpoint gets traps round-robin (not just the first few).
+        for i in 0..40 {
+            let prefix = format!("/ep{i:02}/");
+            let count = t.iter().filter(|r| r.path.starts_with(&prefix)).count();
+            assert!(
+                count >= 7,
+                "{prefix} only got {count} traps out of {}",
+                app::MAX_TRAPS
+            );
+        }
+        // All emitted traps are unique and distinct from bases.
+        let keys: BTreeSet<String> = t.iter().map(req_key).collect();
+        assert_eq!(keys.len(), t.len());
+        for b in &bases {
+            assert!(!keys.contains(&req_key(b)));
+        }
+
+        // Colliding traps across many bases (> 300 raw, < 300 unique) deduplicate before
+        // truncating so nothing is dropped and later endpoints still get traps.
+        let mut colliding: Vec<Req> = (1..=40)
+            .map(|i| Req {
+                method: "GET".into(),
+                path: format!("/items/{i}"),
+                headers: BTreeMap::new(),
+                body: None,
+            })
+            .collect();
+        colliding.push(Req {
+            method: "GET".into(),
+            path: "/tail/hello".into(),
+            headers: BTreeMap::new(),
+            body: None,
+        });
+        let (ct, cdropped) = traps(&colliding);
+        assert_eq!(cdropped, 0);
+        assert!(ct.iter().any(|r| r.path.starts_with("/tail/")));
+        assert!(ct.iter().any(|r| r.path == "/rust-anything-missing"));
+        let ckeys: BTreeSet<String> = ct.iter().map(req_key).collect();
+        assert_eq!(ckeys.len(), ct.len());
     }
 }
