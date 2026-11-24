@@ -843,7 +843,7 @@ fn unquote_form_value(s: &str) -> String {
 }
 
 fn with_multipart_boundary(existing: &str, boundary: &str) -> String {
-    let mut parts = existing.split(';');
+    let mut parts = split_form_segments(existing).into_iter();
     let media = parts
         .next()
         .map(str::trim)
@@ -897,6 +897,8 @@ fn parse_form_part(
             type_override = Some(unquote_form_value(v.trim()));
         } else if let Some(v) = trimmed.strip_prefix("filename=") {
             filename_override = Some(unquote_form_value(v.trim()));
+        } else if trimmed.starts_with("headers=") {
+            return None;
         } else {
             trailing_literal.push(';');
             trailing_literal.push_str(seg);
@@ -1568,26 +1570,43 @@ fn load_spec(dir: &Path, path: &Path) -> Result<Spec> {
     let response = doc.get("response").context("no [response]")?;
     let body_file = dir.join(format!("{name}.body"));
     let effects_file = dir.join(format!("{name}.{}", crate::effects::EXT));
-    let req_body = request
-        .get("body")
-        .and_then(Item::as_str)
-        .map(str::to_string);
-    let req_body_base64 = request
-        .get("body_base64")
-        .and_then(Item::as_str)
-        .map(str::to_string);
-    let req_body_file = request
-        .get("body_file")
-        .and_then(Item::as_str)
-        .map(str::to_string);
-    let body_forms = usize::from(req_body.is_some())
-        + usize::from(req_body_base64.is_some())
-        + usize::from(req_body_file.is_some());
+    let raw_body = request.get("body");
+    let raw_body_base64 = request.get("body_base64");
+    let raw_body_file = request.get("body_file");
+    let body_forms = usize::from(raw_body.is_some())
+        + usize::from(raw_body_base64.is_some())
+        + usize::from(raw_body_file.is_some());
     ensure!(
         body_forms <= 1,
         "{}: [request] may specify at most one of body, body_base64, or body_file",
         path.display()
     );
+    let req_body = match raw_body {
+        Some(item) => Some(
+            item.as_str()
+                .with_context(|| format!("{}: request.body must be a string", path.display()))?
+                .to_string(),
+        ),
+        None => None,
+    };
+    let req_body_base64 = match raw_body_base64 {
+        Some(item) => Some(
+            item.as_str()
+                .with_context(|| {
+                    format!("{}: request.body_base64 must be a string", path.display())
+                })?
+                .to_string(),
+        ),
+        None => None,
+    };
+    let req_body_file = match raw_body_file {
+        Some(item) => Some(
+            item.as_str()
+                .with_context(|| format!("{}: request.body_file must be a string", path.display()))?
+                .to_string(),
+        ),
+        None => None,
+    };
     let (req_body, req_body_base64) = if let Some(b64) = req_body_base64 {
         decode_base64_strict(&b64)
             .with_context(|| format!("{}: invalid request.body_base64", path.display()))?;
@@ -1610,6 +1629,13 @@ fn load_spec(dir: &Path, path: &Path) -> Result<Spec> {
         ensure!(
             candidate.starts_with(&root),
             "{}: request.body_file `{rel}` escapes http/",
+            path.display()
+        );
+        let meta = std::fs::metadata(&candidate)
+            .with_context(|| format!("{}: reading request.body_file `{rel}`", path.display()))?;
+        ensure!(
+            meta.is_file(),
+            "{}: request.body_file `{rel}` is not a regular file",
             path.display()
         );
         let bytes = std::fs::read(&candidate)
@@ -2409,6 +2435,42 @@ mod tests {
         }
 
         assert!(decode_base64_strict("not!valid!b64!").is_err());
+
+        // Quoted Content-Type parameters containing `;` are preserved when replacing boundary.
+        assert_eq!(
+            with_multipart_boundary("multipart/form-data; profile=\"a;b\"; boundary=old", "new"),
+            "multipart/form-data; profile=\"a;b\"; boundary=new"
+        );
+        // Unsupported curl `-F '...;headers=...'` is declined rather than appended to field value.
+        assert!(
+            parse_curl(
+                "curl -F 'submit=OK;headers=\"X-Submit-Type: OK\"' http://localhost:8080/h",
+                &root,
+                &root,
+            )
+            .is_none()
+        );
+        // Non-string TOML body declarations are rejected before exclusivity checks.
+        std::fs::write(
+            http_dir.join("bad-type.toml"),
+            "[request]\nmethod = \"POST\"\npath = \"/raw\"\nbody = \"fallback\"\nbody_base64 = 42\n\n[response]\nstatus = 200\n",
+        )
+        .unwrap();
+        assert!(load_spec(&http_dir, &http_dir.join("bad-type.toml")).is_err());
+        std::fs::write(
+            http_dir.join("bad-file-type.toml"),
+            "[request]\nmethod = \"POST\"\npath = \"/raw\"\nbody_file = 42\n\n[response]\nstatus = 200\n",
+        )
+        .unwrap();
+        assert!(load_spec(&http_dir, &http_dir.join("bad-file-type.toml")).is_err());
+        // Non-regular body_file (e.g. directory) is rejected.
+        std::fs::create_dir_all(http_dir.join("subdir")).unwrap();
+        std::fs::write(
+            http_dir.join("dir-body.toml"),
+            "[request]\nmethod = \"POST\"\npath = \"/raw\"\nbody_file = \"subdir\"\n\n[response]\nstatus = 200\n",
+        )
+        .unwrap();
+        assert!(load_spec(&http_dir, &http_dir.join("dir-body.toml")).is_err());
 
         std::fs::remove_dir_all(root).unwrap();
     }
