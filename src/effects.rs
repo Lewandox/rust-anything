@@ -799,9 +799,10 @@ fn serve_http(mut stream: TcpStream, events: &Mutex<Vec<String>>, rules: &[HttpR
 }
 
 fn strip_http_scheme(target: &str) -> Option<&str> {
-    if target.len() >= 7 && target[..7].eq_ignore_ascii_case("http://") {
+    let bytes = target.as_bytes();
+    if bytes.len() >= 7 && bytes[..7].eq_ignore_ascii_case(b"http://") {
         Some(&target[7..])
-    } else if target.len() >= 8 && target[..8].eq_ignore_ascii_case("https://") {
+    } else if bytes.len() >= 8 && bytes[..8].eq_ignore_ascii_case(b"https://") {
         Some(&target[8..])
     } else {
         None
@@ -1526,6 +1527,7 @@ mod tests {
         assert_eq!(nl.body, "ready\n");
         assert!(nl.matches("GET", "HTTP://example.test/x"));
         assert!(nl.matches("GET", "HTTPS://example.test/x"));
+        assert!(!nl.matches("GET", "/aaaaaé"));
 
         let mut bad_cfg = EffectsConfig {
             http: true,
