@@ -39,7 +39,7 @@ fn is_http_token(s: &str) -> bool {
 impl HttpResponseRule {
     /// Parses `[METHOD ]/path=STATUS[ BODY|@FILE]`, loading `@FILE` relative to `repo`.
     pub fn parse(spec: &str, repo: &Path) -> Result<Self> {
-        let trimmed = spec.trim();
+        let trimmed = spec.trim_start();
         let (first, after_first) = match trimmed.find(char::is_whitespace) {
             Some(i) => (&trimmed[..i], trimmed[i..].trim_start()),
             None => (trimmed, ""),
@@ -149,19 +149,12 @@ impl HttpResponseRule {
             self.status,
             status_reason(self.status)
         );
-        let no_body_status = self.status == 204 || self.status == 304;
+        let no_body_status = matches!(self.status, 204 | 205 | 304);
         let is_head = request_method == "HEAD";
         if !no_body_status && let Some(ct) = &self.content_type {
             head.push_str(&format!("Content-Type: {ct}\r\n"));
         }
-        if no_body_status {
-            head.push_str("Connection: close\r\n\r\n");
-            return head.into_bytes();
-        }
-        if is_head {
-            if !body.is_empty() {
-                head.push_str(&format!("Content-Length: {}\r\n", body.len()));
-            }
+        if no_body_status || is_head {
             head.push_str("Connection: close\r\n\r\n");
             return head.into_bytes();
         }
@@ -291,6 +284,19 @@ pub struct Sinks {
 
 impl Sinks {
     pub fn start(config: &EffectsConfig) -> Result<Sinks> {
+        if config.http
+            && let Some(rule) = config
+                .http_responses
+                .iter()
+                .find(|r| !(200..=599).contains(&r.status))
+        {
+            bail!(
+                "saved effect response `{} {}` has invalid HTTP status {} (expected 200-599)",
+                rule.method,
+                rule.path,
+                rule.status
+            );
+        }
         let events = Arc::new(Mutex::new(Vec::new()));
         let active = Arc::new(AtomicUsize::new(0));
         let http = config
@@ -755,7 +761,7 @@ fn serve_http(mut stream: TcpStream, events: &Mutex<Vec<String>>, rules: &[HttpR
         }
     }
     let matched = rules.iter().find(|r| r.matches(&method, &target));
-    let url = if target.starts_with("http://") || target.starts_with("https://") {
+    let url = if strip_http_scheme(&target).is_some() {
         target
     } else {
         format!("http://{}{target}", header("host").unwrap_or_default())
@@ -783,7 +789,7 @@ fn serve_http(mut stream: TcpStream, events: &Mutex<Vec<String>>, rules: &[HttpR
         let _ = stream.write_all(&rule.response_bytes(&method));
     } else if method == "HEAD" {
         let _ = stream.write_all(
-            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n",
         );
     } else {
         let _ = stream.write_all(
@@ -792,11 +798,18 @@ fn serve_http(mut stream: TcpStream, events: &Mutex<Vec<String>>, rules: &[HttpR
     }
 }
 
+fn strip_http_scheme(target: &str) -> Option<&str> {
+    if target.len() >= 7 && target[..7].eq_ignore_ascii_case("http://") {
+        Some(&target[7..])
+    } else if target.len() >= 8 && target[..8].eq_ignore_ascii_case("https://") {
+        Some(&target[8..])
+    } else {
+        None
+    }
+}
+
 fn request_path(target: &str) -> std::borrow::Cow<'_, str> {
-    if let Some(rest) = target
-        .strip_prefix("http://")
-        .or_else(|| target.strip_prefix("https://"))
-    {
+    if let Some(rest) = strip_http_scheme(target) {
         match rest.find(['/', '?']) {
             Some(i) if rest.as_bytes()[i] == b'/' => std::borrow::Cow::Borrowed(&rest[i..]),
             Some(i) => std::borrow::Cow::Owned(format!("/{}", &rest[i..])),
@@ -1479,13 +1492,23 @@ mod tests {
         assert!(!r304.contains("Content-Length"), "{r304}");
         assert!(r304.ends_with("\r\n\r\n"), "{r304}");
 
+        let r205 = String::from_utf8(
+            HttpResponseRule::parse("GET /x=205 reset", dir)
+                .unwrap()
+                .response_bytes("GET"),
+        )
+        .unwrap();
+        assert!(r205.starts_with("HTTP/1.1 205 "), "{r205}");
+        assert!(!r205.contains("Content-Length"), "{r205}");
+        assert!(r205.ends_with("\r\n\r\n"), "{r205}");
+
         let head_body = String::from_utf8(
             HttpResponseRule::parse("HEAD /x=200 sample", dir)
                 .unwrap()
                 .response_bytes("HEAD"),
         )
         .unwrap();
-        assert!(head_body.contains("Content-Length: 6\r\n"), "{head_body}");
+        assert!(!head_body.contains("Content-Length"), "{head_body}");
         assert!(head_body.ends_with("\r\n\r\n"), "{head_body}");
 
         let head_empty = String::from_utf8(
@@ -1496,5 +1519,26 @@ mod tests {
         .unwrap();
         assert!(!head_empty.contains("Content-Length"), "{head_empty}");
         assert!(head_empty.ends_with("\r\n\r\n"), "{head_empty}");
+
+        // Trailing whitespace preserved in inline body, case-insensitive HTTP:// scheme,
+        // and saved-config status validation in Sinks::start.
+        let nl = HttpResponseRule::parse("GET /x=200 ready\n", dir).unwrap();
+        assert_eq!(nl.body, "ready\n");
+        assert!(nl.matches("GET", "HTTP://example.test/x"));
+        assert!(nl.matches("GET", "HTTPS://example.test/x"));
+
+        let mut bad_cfg = EffectsConfig {
+            http: true,
+            ..Default::default()
+        };
+        bad_cfg.http_responses.push(HttpResponseRule {
+            method: "GET".into(),
+            path: "/x".into(),
+            status: 103,
+            content_type: None,
+            body: String::new(),
+            body_base64: false,
+        });
+        assert!(Sinks::start(&bad_cfg).is_err());
     }
 }
