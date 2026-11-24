@@ -397,7 +397,8 @@ fn java_to_ts_inner(t: &str, in_param: bool) -> Result<String, String> {
         "double" | "float" | "Double" | "Float" => "number".into(),
         "boolean" | "Boolean" => "boolean".into(),
         "void" | "Void" => "void".into(),
-        "List" | "ArrayList" | "Collection" | "Iterable" | "LinkedList" => {
+        "List" | "ArrayList" | "Collection" | "Iterable" | "LinkedList" | "SortedSet"
+        | "NavigableSet" | "TreeSet" | "LinkedHashSet" => {
             let inner = arg(0)?;
             if inner.contains(' ') {
                 format!("({inner})[]")
@@ -416,6 +417,9 @@ fn java_to_ts_inner(t: &str, in_param: bool) -> Result<String, String> {
         "OptionalDouble" => "number | undefined".into(),
         "char" | "Character" => return Err("uses `char`, a UTF-16 code unit".into()),
         "Object" => return Err("takes or returns `Object`: values of any type".into()),
+        "Set" | "HashSet" => {
+            return Err(format!("uses `{head}`, an unordered collection"));
+        }
         "Function" | "BiFunction" | "Supplier" | "Consumer" | "Predicate" | "Runnable"
         | "Callable" | "Comparator" => {
             return Err("takes or returns a function".into());
@@ -801,5 +805,34 @@ public class Totals {
             .map(|f| (f.name.as_str(), f.blocker.is_some()))
             .collect();
         assert_eq!(blocked, [("add", true), ("add", true), ("one", false)]);
+    }
+
+    #[test]
+    fn ordered_sets_bridge_and_unordered_sets_explain_why() {
+        for t in [
+            "SortedSet<String>",
+            "NavigableSet<String>",
+            "TreeSet<String>",
+            "LinkedHashSet<String>",
+            "java.util.TreeSet<String>",
+            "SortedSet<? extends CharSequence>",
+        ] {
+            assert_eq!(java_to_ts_param(t).unwrap(), "string[]", "{t}");
+        }
+        assert_eq!(java_to_ts("TreeSet<Integer>").unwrap(), "int[]");
+        assert_eq!(java_to_ts("LinkedHashSet<Double>").unwrap(), "number[]");
+        assert_eq!(java_to_ts("TreeSet").unwrap_err(), "raw `TreeSet`");
+
+        for (t, expected) in [
+            ("Set<String>", "uses `Set`, an unordered collection"),
+            ("HashSet<String>", "uses `HashSet`, an unordered collection"),
+            (
+                "java.util.Set<Integer>",
+                "uses `Set`, an unordered collection",
+            ),
+        ] {
+            assert_eq!(java_to_ts(t).unwrap_err(), expected, "{t}");
+            assert_eq!(java_to_ts_param(t).unwrap_err(), expected, "{t}");
+        }
     }
 }
