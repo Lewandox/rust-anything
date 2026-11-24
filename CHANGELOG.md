@@ -4,6 +4,8 @@
 
 - The workflow skill's description names Kotlin, PHP, C# and PowerShell, so agents also pick it for those
   ports (#280).
+- Python `bytes`, `bytearray` and `memoryview` hints become `Vec<u8>` in the port, and the PyO3
+  bridge takes any of the three and returns `bytes` without going through JSON (#370).
 
 ## 3.4.0 (2026-11-23)
 

@@ -244,6 +244,21 @@ fn pyo3_bytes_bridge_accepts_bytes_bytearray_memoryview_and_returns_bytes() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn pyo3_float_param_with_integer_default_builds_and_matches() {
+    if common::python().is_none() {
+        return;
+    }
+    let root = project(
+        "pyo3-float-default",
+        &[(
+            "scale.py",
+            "def scale(x: float, factor: float = 2) -> float:\n    return float(x) * float(factor)\n",
+        )],
+    );
+    round_trip(&root, "scale.py", Kind::Pyo3, "scale", "Ok(x * factor)");
+}
+
 /// A freshly bridged crate is all `unimplemented!` stubs: replaying it must pass no case, even
 /// where the original throws the same kind of error a panic turns into.
 fn stubs_fail(root: &Path, unit: &str, kind: Option<Kind>, program: &str) {
