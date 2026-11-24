@@ -363,20 +363,34 @@ public final class RustAnythingJson {
         throw new Mismatch("unsupported type " + c);
     }
 
+    private static Class<?> rawType(Type type) {
+        if (type instanceof WildcardType) {
+            WildcardType w = (WildcardType) type;
+            if (w.getLowerBounds().length > 0) {
+                throw new Mismatch("unsupported wildcard " + type);
+            }
+            Type[] upper = w.getUpperBounds();
+            return rawType(upper.length > 0 ? upper[0] : Object.class);
+        }
+        if (type instanceof Class) {
+            return (Class<?>) type;
+        }
+        if (type instanceof ParameterizedType) {
+            return (Class<?>) ((ParameterizedType) type).getRawType();
+        }
+        if (type instanceof GenericArrayType) {
+            Class<?> elem = rawType(((GenericArrayType) type).getGenericComponentType());
+            return Array.newInstance(elem, 0).getClass();
+        }
+        throw new Mismatch("unsupported type " + type);
+    }
+
     private static Object array(Object v, Type component) {
         if (!(v instanceof List)) {
             throw new Mismatch("not an array");
         }
         List<?> list = (List<?>) v;
-        while (component instanceof WildcardType) {
-            WildcardType w = (WildcardType) component;
-            if (w.getLowerBounds().length > 0) {
-                throw new Mismatch("unsupported wildcard " + component);
-            }
-            Type[] upper = w.getUpperBounds();
-            component = upper.length > 0 ? upper[0] : Object.class;
-        }
-        Class<?> raw = component instanceof Class ? (Class<?>) component : (Class<?>) ((ParameterizedType) component).getRawType();
+        Class<?> raw = rawType(component);
         Object out = Array.newInstance(raw, list.size());
         for (int i = 0; i < list.size(); i++) {
             Array.set(out, i, convert(list.get(i), component));
@@ -1354,7 +1368,10 @@ fn java_ty_inner(t: &str, in_param: bool) -> Option<Ty> {
         "int" | "long" | "short" | "byte" => Ty::I64(t.into()),
         "double" | "float" => Ty::F64(t.into()),
         "boolean" => Ty::Bool,
-        "String" | "CharSequence" => Ty::Str,
+        "String" => Ty::Str,
+        // `Reader` decodes `String` (`List<String>`, `Map<String, T>`), which is not assignable
+        // to invariant `List<CharSequence>` / `Map<CharSequence, T>` in return position.
+        "CharSequence" if in_param => Ty::Str,
         "Integer" => boxed(Ty::I64("int".into())),
         "Long" => boxed(Ty::I64("long".into())),
         "Short" => boxed(Ty::I64("short".into())),
@@ -1933,7 +1950,10 @@ mod tests {
     #[test]
     fn wildcard_params_cross_wire_and_json_converter() {
         assert!(java_ty("List<? extends CharSequence>").is_none());
+        assert!(java_ty("Map<CharSequence, Integer>").is_none());
+        assert!(java_ty("List<CharSequence>").is_none());
         assert!(java_ty_param("List<? extends CharSequence>").is_some());
+        assert!(java_ty_param("Map<CharSequence, Integer>").is_some());
         assert!(java_ty_param("Map<String, ? extends Integer>").is_some());
         assert!(java_ty_param("Map<? extends CharSequence, ? extends Integer>").is_some());
         assert!(java_ty_param("Optional<? extends CharSequence>").is_some());
@@ -1942,6 +1962,7 @@ mod tests {
 
         assert!(JSON_JAVA.contains("import java.lang.reflect.WildcardType;"));
         assert!(JSON_JAVA.contains("type instanceof WildcardType"));
+        assert!(JSON_JAVA.contains("type instanceof GenericArrayType"));
         assert!(JSON_JAVA.contains("v instanceof CharSequence"));
         assert!(WIRE_JAVA.contains("public void str(CharSequence s)"));
 

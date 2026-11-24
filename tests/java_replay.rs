@@ -65,6 +65,12 @@ public class Wildcards {
         for (List<? extends CharSequence> row : rows) total += row.size();
         return total;
     }
+    public static int nestedGenericArray(List<? extends List<String>[][]> grids) {
+        return grids.size() + grids.get(0).length + grids.get(0)[0].length;
+    }
+    public static Map<CharSequence, Integer> echoCharSeqMap(Map<CharSequence, Integer> m) {
+        return m;
+    }
 }
 "#;
     std::fs::create_dir_all(root.join("acme"))?;
@@ -112,7 +118,7 @@ public class Wildcards {
     std::fs::write(run_dir.join("acme/Wildcards.java"), src)?;
     std::fs::write(
         run_dir.join("targets.json"),
-        r#"{"count":["acme.Wildcards","count"],"sumValues":["acme.Wildcards","sumValues"],"firstLen":["acme.Wildcards","firstLen"],"nested":["acme.Wildcards","nested"]}"#,
+        r#"{"count":["acme.Wildcards","count"],"sumValues":["acme.Wildcards","sumValues"],"firstLen":["acme.Wildcards","firstLen"],"nested":["acme.Wildcards","nested"],"nestedGenericArray":["acme.Wildcards","nestedGenericArray"],"echoCharSeqMap":["acme.Wildcards","echoCharSeqMap"]}"#,
     )?;
     std::fs::write(
         run_dir.join("cases.jsonl"),
@@ -126,6 +132,10 @@ public class Wildcards {
             r#"{"fn":"firstLen","args":[null],"ok":-1}"#,
             "\n",
             r#"{"fn":"nested","args":[[["a","b"],["c"]]],"ok":3}"#,
+            "\n",
+            r#"{"fn":"nestedGenericArray","args":[[[[["a"]]]]],"ok":3}"#,
+            "\n",
+            r#"{"fn":"echoCharSeqMap","args":[{"k":9}],"ok":{"k":9}}"#,
             "\n",
             r#"{"fn":"count","args":[[123]],"ok":0}"#,
             "\n",
@@ -151,7 +161,7 @@ public class Wildcards {
         "diff.json",
     ]))?;
     let diff: DiffOutcome = serde_json::from_slice(&std::fs::read(run_dir.join("diff.json"))?)?;
-    assert_eq!((diff.passed, diff.failed), (5, 1), "{diff:?}");
+    assert_eq!((diff.passed, diff.failed), (7, 1), "{diff:?}");
     assert_eq!(diff.mismatches[0]["actual"]["invalid"], true, "{diff:?}");
     Ok(())
 }
