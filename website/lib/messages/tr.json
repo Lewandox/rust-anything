@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Uygulamanızın tamamını parça parça Rust ile yeniden yazın",
-    "description": "Uygulamanızı parça parça Rust ile yeniden yazın, her adımda orijinaline karşı doğrulayın. TypeScript/JavaScript, Python, C, Go, Ruby, Java, PHP ve C# ile yazılmış CLI'lar, sunucular ve kütüphaneler."
+    "description": "Uygulamanızı parça parça Rust ile yeniden yazın, her adımda orijinaline karşı doğrulayın. TypeScript/JavaScript, Python, C, Go, Ruby, Java, Kotlin, PHP, PowerShell ve C# ile yazılmış CLI'lar, sunucular ve kütüphaneler."
   },
   "ui": {
     "docs": "Dokümantasyon",
@@ -130,9 +130,9 @@
         "k": "saf Rust binary üzerinde eşleşen json-server HTTP vakası"
       },
       {
-        "v": "8",
+        "v": "10",
         "unit": "",
-        "k": "dil: altısında doğrulanmış birim portları, PHP ve C# tüm uygulamalar için"
+        "k": "languages: eight with verified ports, Kotlin and PowerShell tested end to end"
       }
     ],
     "installTitle": "Kurulum",
@@ -258,7 +258,7 @@
     "benchPostRow": "POST /comments, 10 bağlantı",
     "benchNote": "Farkın küçük olduğu yerler: 10,000 gönderilik listenin tamamını okuyan tek bağlantı (1.2x) ve büyük veritabanındaki yazmalar (1.1 ila 1.2x); çünkü ikisi de her yazmada dosyanın tamamını yeniden yazar. [Tüm tablolar](/docs/real-world/json-server)",
     "langsTitle": "Diller",
-    "langsDesc": "Dil, depodan otomatik algılanır. C dışındaki her dil batch'leri de alır: öğeler sınırı bir kez geçer ve tüm çekirdeklerde Rust içinde kalır.",
+    "langsDesc": "Dil, depodan otomatik algılanır. C, PHP, C# ve PowerShell dışındaki her dil batch'leri de alır: öğeler sınırı bir kez geçer ve tüm çekirdeklerde Rust içinde kalır.",
     "verified": "Doğrulanmış",
     "wholeApps": "Tüm uygulamalar",
     "langMeta": {
@@ -267,9 +267,7 @@
       "c": "extern \"C\". glibc cephesi: 1,859/1,859",
       "go": "cgo ve ikili bir wire. Go path: 2,642/2,642",
       "ruby": "magnus. shellwords: 1,617/1,617",
-      "java": "JNI ve ikili bir wire. JDK cephesi: 4,492/4,492",
-      "php": "tüm uygulama kaydetme ve yeniden oynatma; birim köprüleri sırada",
-      "csharp": "tüm uygulama kaydetme ve yeniden oynatma; birim köprüleri sırada"
+      "java": "JNI ve ikili bir wire. JDK cephesi: 4,492/4,492"
     },
     "sponsorsTitle": "Sponsorlar",
     "sponsorsDesc": "rust-anything ücretsiz ve açık kaynaktır. İşinize yarıyorsa lütfen sponsor olmayı düşünün. Desteğiniz geliştirmenin sürmesini sağlar.",

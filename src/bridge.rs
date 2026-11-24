@@ -88,6 +88,9 @@ pub struct Manifest {
     /// Floats match within this relative tolerance (`record --float-tolerance`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub float_tolerance: Option<f64>,
+    /// Objects match regardless of key order (`record --ignore-key-order`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ignore_key_order: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -289,6 +292,8 @@ pub enum RType {
     /// A whole number (`int` in the type dialect: Python, Go, Java and C have one; JS does not).
     Int,
     Bool,
+    /// A byte buffer (`bytes` in the type dialect): `Vec<u8>` in the port.
+    Bytes,
     Unit,
     Vec(Box<RType>),
     Opt(Box<RType>),
@@ -351,6 +356,7 @@ impl RType {
             "number" => Self::F64,
             "int" => Self::Int,
             "boolean" => Self::Bool,
+            "pybytes" => Self::Bytes,
             "void" | "undefined" => Self::Unit,
             _ if is_string_literal(ts) => Self::Str,
             _ => Self::Json,
@@ -367,6 +373,7 @@ impl RType {
             Self::F64 => "f64".into(),
             Self::Int => "i64".into(),
             Self::Bool => "bool".into(),
+            Self::Bytes => "Vec<u8>".into(),
             Self::Unit => "()".into(),
             Self::Vec(t) => format!("Vec<{}>", t.rust()),
             Self::Opt(t) => format!("Option<{}>", t.rust()),
@@ -1293,6 +1300,7 @@ pub fn bridge(opts: &Options) -> Result<Outcome> {
         batches: parse_batches(&opts.batch)?,
         allocator: opts.allocator,
         float_tolerance: None,
+        ignore_key_order: false,
     };
     if kind == Kind::CAbi {
         return bridge_c(&manifest, &crate_dir, &js_only);

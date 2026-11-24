@@ -1,3 +1,5 @@
+import { withLocale } from '../lib/locales'
+
 const TOKEN = /`([^`]+)`|\[([^\]]+)\]\(([^)\s]+)\)/g
 
 export default function Rich({ text, locale }: { text: string; locale?: string }) {
@@ -9,7 +11,7 @@ export default function Rich({ text, locale }: { text: string; locale?: string }
     if (at > last) out.push(text.slice(last, at))
     if (m[1] !== undefined) out.push(<code key={k++}>{m[1]}</code>)
     else {
-      const href = locale && locale !== 'en' && m[3].startsWith('/docs/') ? `/${locale}${m[3]}` : m[3]
+      const href = locale ? withLocale(m[3], locale) : m[3]
       out.push(
         <a key={k++} href={href}>
           {m[2]}

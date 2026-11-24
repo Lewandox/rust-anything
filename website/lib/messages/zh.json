@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "逐块将你的整个应用重写为 Rust",
-    "description": "逐块将你的应用重写为 Rust，每一步都与原实现比对校验。支持 TypeScript/JavaScript、Python、C、Go、Ruby、Java、PHP 和 C# 编写的 CLI、服务端与程序库。"
+    "description": "逐块将你的应用重写为 Rust，每一步都与原实现比对校验。支持 TypeScript/JavaScript、Python、C、Go、Ruby、Java、Kotlin、PHP、PowerShell 和 C# 编写的 CLI、服务端与程序库。"
   },
   "ui": {
     "docs": "文档",
@@ -130,9 +130,9 @@
         "k": "json-server 的 HTTP 用例在纯 Rust 二进制上全部一致"
       },
       {
-        "v": "8",
+        "v": "10",
         "unit": "",
-        "k": "种语言：六种已验证单元迁移，PHP 和 C# 支持整个应用"
+        "k": "languages: eight with verified ports, Kotlin and PowerShell tested end to end"
       }
     ],
     "installTitle": "安装",
@@ -258,7 +258,7 @@
     "benchPostRow": "POST /comments，10 个连接",
     "benchNote": "差距较小的地方：单个连接读取完整的 10,000 条帖子列表（1.2x），以及大数据库上的写入（1.1 到 1.2x），因为两者每次写入都会重写整个文件。[完整表格](/docs/real-world/json-server)",
     "langsTitle": "支持语言",
-    "langsDesc": "语言会根据仓库自动检测。除 C 以外的每种语言都支持批处理：数据只跨边界一次并留在 Rust 侧，在全部 CPU 核心上运行。",
+    "langsDesc": "语言会根据仓库自动检测。除 C、PHP、C# 和 PowerShell 以外的每种语言都支持批处理：数据只跨边界一次并留在 Rust 侧，在全部 CPU 核心上运行。",
     "verified": "已验证",
     "wholeApps": "整个应用",
     "langMeta": {
@@ -267,9 +267,7 @@
       "c": "extern \"C\"。glibc 门面：1,859/1,859",
       "go": "cgo 与二进制传输协议。Go path：2,642/2,642",
       "ruby": "magnus。shellwords：1,617/1,617",
-      "java": "JNI 与二进制传输协议。JDK 门面：4,492/4,492",
-      "php": "整个应用的录制与回放；单元桥接即将推出",
-      "csharp": "整个应用的录制与回放；单元桥接即将推出"
+      "java": "JNI 与二进制传输协议。JDK 门面：4,492/4,492"
     },
     "sponsorsTitle": "赞助商",
     "sponsorsDesc": "rust-anything 免费且开源。如果它对你的工作有帮助，欢迎考虑赞助。你的支持让开发得以持续。",

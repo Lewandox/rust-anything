@@ -4,11 +4,13 @@
 
 <h1 align="center">rust-anything</h1>
 
-<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · Українська · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a></sub></p>
+<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · Українська · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a> · <a href="README_AR.md">العربية</a> · <a href="README_FA.md">فارسی</a> · <a href="README_HI.md">हिन्दी</a></sub></p>
 <p align="center"><sub>Цей переклад підтримує спільнота, тому він може відставати від <a href="../README.md">англійського README</a>.</sub></p>
 
 <p align="center"><b>Перепишіть свій застосунок на Rust і доведіть, що він поводиться так само.</b><br>
 Він не перекладає код: Rust пише ваш агент для програмування (або ви), а rust-anything перевіряє його проти оригіналу.</p>
+
+<p align="center"><b>Документація:</b> <a href="https://rust-anything.com/uk">https://rust-anything.com/uk</a></p>
 
 <p align="center">
   <img src="https://img.shields.io/github/languages/top/erkamyaman/rust-anything?logo=rust&label=Rust&color=CE422B" alt="Rust share of the code">
@@ -23,7 +25,7 @@
   <a href="https://github.com/erkamyaman/rust-anything"><img src="https://img.shields.io/github/stars/erkamyaman/rust-anything?style=social" alt="GitHub stars"></a>
 </p>
 
-<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a></p>
+<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a> <a href="https://discord.gg/FXhUEA8eBR"><img src="https://img.shields.io/badge/Join%20the%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Discord"></a></p>
 
 <p align="center"><a href="https://trendshift.io/repositories/363468" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/363468/daily?language=Rust" alt="erkamyaman/rust-anything: #1 Rust repository of the day on Trendshift" width="250" height="55"/></a></p>
 
@@ -225,10 +227,12 @@ rust-anything не перекладає код: Rust пише ваш агент 
 | Go | пакет | типізовані виклики cgo та згенерований бінарний wire-формат, у пакеті з оригінальним API | згенерований Go-драйвер, зібраний як окремий модуль |
 | Ruby | файл або тека з функціями модулів | розширення magnus під оригінальними модулями | згенерований Ruby-драйвер |
 | Java | пакет методів `public static` | типізований JNI та згенерований бінарний wire-формат, у класах-обгортках з оригінальними методами | згенерований драйвер на reflection |
-| PHP | тека з функціями та методами `public static` | наступний крок: PHP FFI поверх C ABI | цілі застосунки вже зараз: `app record`, `app replay` і front door, для CLI та серверів (`php -S`) |
-| C# | тека з методами `public static` | наступний крок: P/Invoke поверх C ABI | цілі застосунки вже зараз: `app record`, `app replay` і front door, для CLI та серверів ASP.NET (`dotnet <app>.dll`) |
+| Kotlin | Gradle-модуль функцій верхнього рівня та методів `@JvmStatic` | Java bridge: типізований JNI у Java-класах-обгортках, що викликають скомпільовані статичні члени Kotlin | згенерований драйвер на reflection, вихідні файли Kotlin компілюються через `kotlinc` |
+| PHP | файл або тека з функціями верхнього рівня (методи `public static` лишаються в PHP) | JSON-диспетчер поверх `ext-ffi`, у файлі, що заново оголошує функції з оригінальними параметрами | згенерований PHP-драйвер; цілі застосунки через `app record`, `app replay` і front door, для CLI та серверів (`php -S`) |
+| PowerShell | модуль `.psm1` або скрипт `.ps1` з функціями з блоками `param()` (експортуються згідно з `Export-ModuleMember`) | JSON-диспетчер поверх P/Invoke, оголошений під час завантаження через Reflection.Emit, у `.ps1`, що заново оголошує кожну функцію з її оригінальним блоком `param()` | згенерований `pwsh`-драйвер (PowerShell 7.4+) |
+| C# | файл або тека з методами `public static` | JSON-диспетчер поверх P/Invoke, у класах `<namespace>.Rust` з оригінальними методами | згенерований драйвер на reflection, скомпільований разом із вихідними файлами проєкту через `dotnet build`; цілі застосунки через `app record`, `app replay` і front door, для CLI та серверів ASP.NET (`dotnet <app>.dll`) |
 
-Кожна мова, крім C, також отримує batch-класи (`--batch`): елементи передаються один раз і залишаються в
+Кожна мова, крім C, PHP, C# і PowerShell, також отримує batch-класи (`--batch`): елементи передаються один раз і залишаються в
 Rust, а кожен виклик обробляє їх усі на всіх ядрах.
 
 Мова визначається за репозиторієм (`go.mod`, `pom.xml`, `.csproj` або `.sln`,
@@ -277,7 +281,7 @@ C# працює так само: `analyze` читає проєкти `.csproj` �
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Спонсори: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Спонсори: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş, bugrcvi">
     </picture>
   </a>
 </p>

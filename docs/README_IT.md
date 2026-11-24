@@ -4,12 +4,14 @@
 
 <h1 align="center">rust-anything</h1>
 
-<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · Italiano · <a href="README_ID.md">Bahasa Indonesia</a></sub></p>
+<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · Italiano · <a href="README_ID.md">Bahasa Indonesia</a> · <a href="README_AR.md">العربية</a> · <a href="README_FA.md">فارسی</a> · <a href="README_HI.md">हिन्दी</a></sub></p>
 <p align="center"><sub>Questa traduzione è mantenuta dalla community e può restare indietro rispetto al <a href="../README.md">README in inglese</a>.</sub></p>
 
 <p align="center"><b>Riscrivi la tua applicazione in Rust e dimostra che si comporta ancora allo stesso modo.</b><br>
 Puntalo sulla tua applicazione: registra ciò che fa l'originale, il tuo agente di programmazione scrive il Rust un pezzo alla volta,<br>
 e ogni pezzo viene verificato rispetto a quella registrazione prima di proseguire. Non traduce codice: dimostra la riscrittura.</p>
+
+<p align="center"><b>Documentazione:</b> <a href="https://rust-anything.com/">https://rust-anything.com/</a></p>
 
 <p align="center">
   <img src="https://img.shields.io/github/languages/top/erkamyaman/rust-anything?logo=rust&label=Rust&color=CE422B" alt="Rust share of the code">
@@ -24,7 +26,7 @@ e ogni pezzo viene verificato rispetto a quella registrazione prima di proseguir
   <a href="https://github.com/erkamyaman/rust-anything"><img src="https://img.shields.io/github/stars/erkamyaman/rust-anything?style=social" alt="GitHub stars"></a>
 </p>
 
-<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a></p>
+<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a> <a href="https://discord.gg/FXhUEA8eBR"><img src="https://img.shields.io/badge/Join%20the%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Discord"></a></p>
 
 <p align="center"><a href="https://trendshift.io/repositories/363468" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/363468/daily?language=Rust" alt="erkamyaman/rust-anything: #1 Rust repository of the day on Trendshift" width="250" height="55"/></a></p>
 
@@ -266,8 +268,9 @@ l'email due volte fallisce:
 | Kotlin | modulo Gradle di funzioni di primo livello e metodi `@JvmStatic` | il ponte Java: JNI tipizzato in classi wrapper Java che chiamano gli static Kotlin compilati | un driver di reflection generato, con i sorgenti Kotlin compilati da `kotlinc` |
 | PHP | file o cartella di funzioni di primo livello (i metodi `public static` restano in PHP) | un dispatcher JSON su `ext-ffi`, in un file che ridichiara le funzioni con i parametri originali | un driver PHP generato; applicazioni intere con `app record`, `app replay` e la front door, per CLI e server (`php -S`) |
 | C# | file o cartella di metodi `public static` | un dispatcher JSON su P/Invoke, in classi `<namespace>.Rust` con i metodi originali | un driver a reflection generato, compilato con le sorgenti del progetto da `dotnet build`; applicazioni intere con `app record`, `app replay` e la front door, per CLI e server ASP.NET (`dotnet <app>.dll`) |
+| PowerShell | modulo `.psm1` o script `.ps1` di funzioni con blocchi `param()` (esportate con `Export-ModuleMember`) | un dispatcher JSON su P/Invoke, dichiarato al caricamento con Reflection.Emit, in un `.ps1` che ridichiara ogni funzione con il suo blocco `param()` originale | un driver `pwsh` generato (PowerShell 7.4+) |
 
-Ogni linguaggio tranne C, PHP e C# riceve anche classi batch (`--batch`): gli elementi attraversano una
+Ogni linguaggio tranne C, PHP, C# e PowerShell riceve anche classi batch (`--batch`): gli elementi attraversano una
 volta sola e restano in Rust, e ogni chiamata li esegue tutti su tutti i core.
 
 Il linguaggio viene rilevato dal repository (`go.mod`, `pom.xml`, `build.gradle`/`build.gradle.kts`,
@@ -343,7 +346,7 @@ per C# ([issue #200](https://github.com/erkamyaman/rust-anything/issues/200)).
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Sponsor: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Sponsor: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş, bugrcvi">
     </picture>
   </a>
 </p>

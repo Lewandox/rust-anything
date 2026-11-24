@@ -19,6 +19,19 @@ pub fn results(f: &ExportedFn) -> (Vec<String>, bool) {
     (parts, fallible)
 }
 
+/// The port type of a Go type whose range `i64` cannot hold (`uint64`, `uint`, `uintptr`), alone
+/// or as the items of a slice; `None` for every other type.
+pub fn unsigned_port_type(go: &str) -> Option<String> {
+    match go.trim() {
+        "uint64" | "uint" => Some("u64".into()),
+        "uintptr" => Some("usize".into()),
+        go => go
+            .strip_prefix("[]")
+            .and_then(unsigned_port_type)
+            .map(|item| format!("Vec<{item}>")),
+    }
+}
+
 fn split_top(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut depth = 0i32;
@@ -138,6 +151,208 @@ pub fn package_name(m: &Manifest) -> String {
         .unwrap_or_else(|| "port".into())
 }
 
+/// The Go sources of the unit selected for the active Go build target (excludes other-OS/arch
+/// files such as `errors_windows.go` on Linux so generated sentinel references always compile).
+fn sentinel_sources(m: &Manifest) -> Vec<String> {
+    let dir = m.root.join(m.unit.trim_end_matches('/'));
+    let dir = if dir.is_file() {
+        dir.parent().map(Path::to_path_buf).unwrap_or(dir)
+    } else {
+        dir
+    };
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension().is_some_and(|e| e == "go")
+                && !p.to_string_lossy().ends_with("_test.go")
+                && go_file_matches_host(p)
+        })
+        .collect();
+    files.sort();
+    files
+        .iter()
+        .filter_map(|p| std::fs::read_to_string(p).ok())
+        .filter(|src| go_build_tag_matches_host(src))
+        .collect()
+}
+
+fn host_goos() -> &'static str {
+    match std::env::consts::OS {
+        "macos" => "darwin",
+        other => other,
+    }
+}
+
+fn host_goarch() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        "aarch64" => "arm64",
+        "x86" => "386",
+        other => other,
+    }
+}
+
+fn go_file_matches_host(path: &Path) -> bool {
+    const KNOWN_GOOS: &[&str] = &[
+        "aix",
+        "android",
+        "darwin",
+        "dragonfly",
+        "freebsd",
+        "hurd",
+        "illumos",
+        "ios",
+        "js",
+        "linux",
+        "netbsd",
+        "openbsd",
+        "plan9",
+        "solaris",
+        "wasip1",
+        "windows",
+    ];
+    const KNOWN_GOARCH: &[&str] = &[
+        "386", "amd64", "arm", "arm64", "loong64", "mips", "mips64", "mips64le", "mipsle", "ppc64",
+        "ppc64le", "riscv64", "s390x", "wasm",
+    ];
+    let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+        return true;
+    };
+    let mut parts: Vec<&str> = stem.split('_').collect();
+    if parts.len() < 2 {
+        return true;
+    }
+    if let Some(&last) = parts.last()
+        && KNOWN_GOARCH.contains(&last)
+    {
+        if last != host_goarch() {
+            return false;
+        }
+        parts.pop();
+    }
+    if parts.len() >= 2
+        && let Some(&last) = parts.last()
+        && KNOWN_GOOS.contains(&last)
+        && last != host_goos()
+    {
+        return false;
+    }
+    true
+}
+
+fn go_build_tag_matches_host(source: &str) -> bool {
+    let host_os = host_goos();
+    let is_unix = matches!(
+        host_os,
+        "darwin" | "dragonfly" | "freebsd" | "linux" | "netbsd" | "openbsd" | "solaris"
+    );
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("package ") {
+            break;
+        }
+        if let Some(expr) = trimmed.strip_prefix("//go:build ") {
+            let expr = expr.trim();
+            if matches!(
+                expr,
+                "linux" | "windows" | "darwin" | "freebsd" | "openbsd" | "netbsd" | "plan9"
+            ) {
+                return expr == host_os;
+            }
+            if expr == "unix" {
+                return is_unix;
+            }
+            if let Some(neg) = expr.strip_prefix('!') {
+                let neg = neg.trim();
+                if matches!(
+                    neg,
+                    "linux" | "windows" | "darwin" | "freebsd" | "openbsd" | "netbsd"
+                ) {
+                    return neg != host_os;
+                }
+                if neg == "unix" {
+                    return !is_unix;
+                }
+            }
+        }
+    }
+    true
+}
+
+/// Re-declares exported sentinel errors and emits `rustAnythingToErr` so `errors.Is` and `==`
+/// match the package's own error values.
+fn emit_sentinel_lookup(out: &mut String, sentinels: &[crate::lang::go::SentinelError]) {
+    if sentinels.is_empty() {
+        out.push_str("\nfunc rustAnythingToErr(msg string) error {\n\treturn errors.New(msg)\n}\n");
+        return;
+    }
+    out.push('\n');
+    for s in sentinels {
+        if let Some(target) = &s.alias_of {
+            let _ = writeln!(out, "var {} = {target}", s.name);
+        } else {
+            let text = s.message.as_deref().unwrap_or(&s.name);
+            let quoted = serde_json::to_string(text).unwrap_or_else(|_| format!("{text:?}"));
+            let _ = writeln!(out, "var {} = errors.New({quoted})", s.name);
+        }
+    }
+    out.push_str(
+        "\ntype rustAnythingWrappedErr struct {\n\tsentinel error\n\tmsg      string\n}\n\n\
+         func (e *rustAnythingWrappedErr) Error() string { return e.msg }\n\
+         func (e *rustAnythingWrappedErr) Unwrap() error { return e.sentinel }\n\n\
+         type rustAnythingSentinel struct {\n\tname    string\n\ttext    string\n\thasText bool\n\terr     error\n}\n\n\
+         var rustAnythingSentinels = []rustAnythingSentinel{\n",
+    );
+    for s in sentinels {
+        let name_q = serde_json::to_string(&s.name).unwrap_or_else(|_| format!("{:?}", s.name));
+        let (has_text, text_q) = match &s.message {
+            Some(t) => (
+                "true",
+                serde_json::to_string(t).unwrap_or_else(|_| format!("{t:?}")),
+            ),
+            None => ("false", "\"\"".into()),
+        };
+        let _ = writeln!(
+            out,
+            "\t{{name: {name_q}, text: {text_q}, hasText: {has_text}, err: {}}},",
+            s.name
+        );
+    }
+    out.push_str(
+        r#"}
+
+func rustAnythingToErr(msg string) error {
+	for _, s := range rustAnythingSentinels {
+		if msg == s.name || (s.hasText && msg == s.text) {
+			return s.err
+		}
+	}
+	for _, s := range rustAnythingSentinels {
+		if prefix := s.name + ": "; strings.HasPrefix(msg, prefix) {
+			rest := strings.TrimPrefix(msg, prefix)
+			if !s.hasText {
+				return &rustAnythingWrappedErr{sentinel: s.err, msg: rest}
+			}
+			return fmt.Errorf("%w: %s", s.err, rest)
+		}
+		if s.hasText && s.text != "" {
+			if prefix := s.text + ": "; strings.HasPrefix(msg, prefix) {
+				return fmt.Errorf("%w: %s", s.err, strings.TrimPrefix(msg, prefix))
+			}
+			if suffix := ": " + s.text; strings.HasSuffix(msg, suffix) {
+				return fmt.Errorf("%s: %w", strings.TrimSuffix(msg, suffix), s.err)
+			}
+		}
+	}
+	return errors.New(msg)
+}
+"#,
+    );
+}
+
 /// JSON helpers shared by the wrapper and the driver.
 const HELPERS_GO: &str = r#"
 // rustAnythingDecode decodes JSON into target; floats may be {"$num": "NaN" | "Infinity" | ...}.
@@ -197,6 +412,12 @@ pub fn wrapper(m: &Manifest, api: &crate::codegen::PortApi) -> String {
     let lib = m.lib_name();
     let sources = unit_sources(m);
     let types = crate::lang::go::type_decls(&sources, &used_types(m));
+    let sentinels = crate::lang::go::sentinel_errors(&sentinel_sources(m));
+    let extra_imports = if sentinels.is_empty() {
+        ""
+    } else {
+        "\t\"fmt\"\n\t\"strings\"\n"
+    };
     let mut out = format!(
         "// Package {pkg} is the Rust port of `{unit}`, generated by rust-anything: the same API, each\n\
          // function calling the Rust library. Regenerate with `rust-anything refresh`.\n\
@@ -205,7 +426,7 @@ pub fn wrapper(m: &Manifest, api: &crate::codegen::PortApi) -> String {
          #include <stdbool.h>\n#include <stdint.h>\n#include <stdlib.h>\n\
          char *rust_anything_call(const char *name, const char *args);\n\
          void rust_anything_free(char *ptr);\n{typed_c}*/\nimport \"C\"\n\n\
-         import (\n\t\"encoding/binary\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"math\"\n\t\"runtime\"\n\t\"unsafe\"\n)\n\nvar _ = binary.LittleEndian\nvar _ = runtime.KeepAlive\n",
+         import (\n\t\"encoding/binary\"\n\t\"encoding/json\"\n\t\"errors\"\n{extra_imports}\t\"math\"\n\t\"runtime\"\n\t\"unsafe\"\n)\n\nvar _ = binary.LittleEndian\nvar _ = runtime.KeepAlive\n",
         pkg = package_name(m),
         unit = m.unit,
         typed_c = typed_prototypes(m, api),
@@ -213,6 +434,7 @@ pub fn wrapper(m: &Manifest, api: &crate::codegen::PortApi) -> String {
     for t in types {
         let _ = write!(out, "\n{t}\n");
     }
+    emit_sentinel_lookup(&mut out, &sentinels);
     out.push_str(HELPERS_GO);
     out.push_str(
         r#"
@@ -244,7 +466,7 @@ func rustAnythingCall(name string, args ...any) (json.RawMessage, error) {
 		panic(*a.Panic)
 	}
 	if a.Error != nil {
-		return nil, errors.New(*a.Error)
+		return nil, rustAnythingToErr(*a.Error)
 	}
 	return a.Ok, nil
 }
@@ -534,9 +756,9 @@ fn typed_go(e: &ExportedFn) -> String {
     let fail = |body: &mut String| {
         if fallible {
             let ret = if zero.is_empty() {
-                "errors.New(rustAnythingErr(errp))".to_string()
+                "rustAnythingToErr(rustAnythingErr(errp))".to_string()
             } else {
-                format!("{zero}, errors.New(rustAnythingErr(errp))")
+                format!("{zero}, rustAnythingToErr(rustAnythingErr(errp))")
             };
             let _ = writeln!(body, "\tif status == 1 {{\n\t\treturn {ret}\n\t}}");
         } else {
@@ -961,7 +1183,7 @@ fn wire_go(e: &ExportedFn, params: &[(String, Ty)], result: Option<&Ty>) -> Stri
     );
     let mut fail_ret: Vec<String> = names.clone();
     if fallible {
-        fail_ret.push("errors.New(rustAnythingErr(errp))".into());
+        fail_ret.push("rustAnythingToErr(rustAnythingErr(errp))".into());
         let _ = writeln!(
             body,
             "\tif status == 1 {{\n\t\treturn {}\n\t}}",
@@ -1132,7 +1354,7 @@ pub fn driver(m: &Manifest, import_path: &str) -> String {
         }
         if fallible {
             cases.push_str(
-                "\t\tif err != nil {\n\t\t\treturn map[string]any{\"error\": err.Error()}\n\t\t}\n",
+                "\t\tif err != nil {\n\t\t\tres := map[string]any{\"error\": err.Error()}\n\t\t\tif s := rustAnythingSentinelName(err); s != \"\" {\n\t\t\t\tres[\"sentinel\"] = s\n\t\t\t}\n\t\t\treturn res\n\t\t}\n",
             );
         }
         let ok = match results.len() {
@@ -1148,10 +1370,22 @@ pub fn driver(m: &Manifest, import_path: &str) -> String {
         };
         let _ = writeln!(cases, "\t\treturn map[string]any{{\"ok\": {ok}}}");
     }
+    let sentinels = crate::lang::go::sentinel_errors(&sentinel_sources(m));
+    let mut sentinel_fn = String::from("func rustAnythingSentinelName(err error) string {\n");
+    for s in &sentinels {
+        let name_q = serde_json::to_string(&s.name).unwrap_or_else(|_| format!("{:?}", s.name));
+        let _ = writeln!(
+            sentinel_fn,
+            "\tif errors.Is(err, pkg.{}) {{\n\t\treturn {name_q}\n\t}}",
+            s.name
+        );
+    }
+    sentinel_fn.push_str("\treturn \"\"\n}\n");
     DRIVER_GO
         .replace("IMPORT_PATH", import_path)
         .replace("// CASES\n", &cases)
         .replace("// PREPARES\n", &prepares)
+        .replace("// SENTINELS\n", &sentinel_fn)
         .replace("// HELPERS\n", HELPERS_GO)
 }
 
@@ -1173,6 +1407,8 @@ import (
 )
 
 var _ = errors.New
+
+// SENTINELS
 
 // HELPERS
 
@@ -1310,10 +1546,13 @@ func diff(cases, out string) {
 			continue
 		}
 		expected := map[string]any{}
-		for _, k := range []string{"ok", "error", "panic"} {
+		for _, k := range []string{"ok", "error", "sentinel", "panic"} {
 			if raw, ok := c[k]; ok {
 				expected[k] = raw
 			}
+		}
+		if _, ok := c["sentinel"]; !ok {
+			delete(got, "sentinel")
 		}
 		same := false
 		if p, ok := got["panic"]; ok && strings.Contains(fmt.Sprint(p), "Rust panic:") {
@@ -1401,11 +1640,18 @@ func main() {
 /// `RUST_ANYTHING_MODE=old` runs the original only, `new` the port only.
 pub fn shadow(m: &Manifest, original: &str) -> String {
     let wrapper = crate::harness_go::wrapper_module(m);
+    let sentinels = crate::lang::go::sentinel_errors(&sentinel_sources(m));
+    let remap_sentinels = !sentinels.is_empty() && m.exports.iter().any(|f| results(f).1);
+    let extra_imports = if remap_sentinels {
+        "\t\"errors\"\n\t\"fmt\"\n\t\"strings\"\n"
+    } else {
+        ""
+    };
     let mut out = format!(
         "// Package {pkg} runs the Go original and the Rust port of `{unit}` side by side. Generated\n\
          // by rust-anything: import it in place of {original}. RUST_ANYTHING_MODE=old|shadow|new.\n\
          package {pkg}\n\n\
-         import (\n\t\"encoding/json\"\n\t\"log\"\n\t\"os\"\n\t\"reflect\"\n\t\"sync/atomic\"\n\n\
+         import (\n\t\"encoding/json\"\n{extra_imports}\t\"log\"\n\t\"os\"\n\t\"reflect\"\n\t\"sync/atomic\"\n\n\
          \torig \"{original}\"\n\tport \"{wrapper}\"\n)\n\n\
          var mode = func() string {{\n\tif m := os.Getenv(\"RUST_ANYTHING_MODE\"); m != \"\" {{\n\t\treturn m\n\t}}\n\treturn \"shadow\"\n}}()\n\n\
          // Calls and Mismatches count shadowed calls.\nvar Calls, Mismatches atomic.Int64\n\n\
@@ -1421,6 +1667,37 @@ pub fn shadow(m: &Manifest, original: &str) -> String {
             out,
             "\n// {t} is the original's type.\ntype {t} = orig.{t}\n"
         );
+    }
+    for s in &sentinels {
+        let _ = write!(
+            out,
+            "\n// {} is the original's sentinel error.\nvar {} = orig.{}\n",
+            s.name, s.name, s.name
+        );
+    }
+    if remap_sentinels {
+        out.push_str(
+            "\nfunc remapErr(err error) error {\n\tif err == nil {\n\t\treturn nil\n\t}\n",
+        );
+        for s in &sentinels {
+            let n = &s.name;
+            let _ = write!(
+                out,
+                "\tif err == port.{n} {{\n\t\treturn orig.{n}\n\t}}\n\
+                 \tif errors.Is(err, port.{n}) {{\n\
+                 \t\tmsg := err.Error()\n\
+                 \t\ttext := port.{n}.Error()\n\
+                 \t\tif prefix := text + \": \"; strings.HasPrefix(msg, prefix) {{\n\
+                 \t\t\treturn fmt.Errorf(\"%w: %s\", orig.{n}, strings.TrimPrefix(msg, prefix))\n\
+                 \t\t}}\n\
+                 \t\tif suffix := \": \" + text; strings.HasSuffix(msg, suffix) {{\n\
+                 \t\t\treturn fmt.Errorf(\"%s: %w\", strings.TrimSuffix(msg, suffix), orig.{n})\n\
+                 \t\t}}\n\
+                 \t\treturn orig.{n}\n\
+                 \t}}\n"
+            );
+        }
+        out.push_str("\treturn err\n}\n");
     }
     for f in &m.exports {
         let (results, fallible) = results(f);
@@ -1468,7 +1745,9 @@ pub fn shadow(m: &Manifest, original: &str) -> String {
             .iter()
             .zip(&rust_names)
             .map(|(t, n)| {
-                if local_types(t).is_empty() {
+                if t == "error" && remap_sentinels {
+                    format!("remapErr({n})")
+                } else if local_types(t).is_empty() {
                     n.clone()
                 } else {
                     format!("convert[{t}]({n})")
@@ -1556,6 +1835,7 @@ func Json(raw uint64) uint64 { return raw }"#,
             batches: vec![],
             allocator: Default::default(),
             float_tolerance: None,
+            ignore_key_order: false,
         };
         let mut api = crate::codegen::parse_port(&crate::codegen::port_rs(&manifest));
         crate::bridge::match_export_names(&manifest, &mut api);
@@ -1579,5 +1859,198 @@ func Json(raw uint64) uint64 { return raw }"#,
         assert_eq!(qualify("map[string]Point"), "map[string]pkg.Point");
         assert_eq!(qualify("time.Duration"), "time.Duration");
         assert_eq!(local_types("map[string][]Point"), ["Point"]);
+    }
+
+    #[test]
+    fn maps_sentinel_errors_in_wrapper_driver_and_shadow() {
+        let dir =
+            std::env::temp_dir().join(format!("rust-anything-go-sentinels-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("store")).unwrap();
+        let src = r#"package store
+
+import "errors"
+
+var (
+	ErrNotFound = errors.New("not found")
+	ErrAlias    error = ErrNotFound
+	ErrBadInput = errors.New("bad input")
+)
+
+func Lookup(id int) (string, error) {
+	if id < 0 {
+		return "", ErrBadInput
+	}
+	return "", ErrNotFound
+}
+"#;
+        std::fs::write(dir.join("store/store.go"), src).unwrap();
+        // Platform-specific file for another OS must be excluded from sentinel discovery.
+        let other_os = if host_goos() == "windows" {
+            "linux"
+        } else {
+            "windows"
+        };
+        std::fs::write(
+            dir.join(format!("store/errors_{other_os}.go")),
+            "package store\nimport \"errors\"\nvar ErrOtherOS = errors.New(\"other\")\n",
+        )
+        .unwrap();
+        let exports = crate::lang::go::exports("store/store.go", src);
+        let manifest = Manifest {
+            schema: String::new(),
+            root: dir.clone(),
+            root_written: None,
+            unit: "store/".into(),
+            language: crate::lang::Lang::Go,
+            kind: crate::bridge::Kind::Ffi,
+            crate_name: "store-rs".into(),
+            exports,
+            classes: vec![],
+            js_only: vec![],
+            batches: vec![],
+            allocator: Default::default(),
+            float_tolerance: None,
+            ignore_key_order: false,
+        };
+        let mut api = crate::codegen::parse_port(&crate::codegen::port_rs(&manifest));
+        crate::bridge::match_export_names(&manifest, &mut api);
+
+        let w = wrapper(&manifest, &api);
+        assert!(
+            w.contains("var ErrNotFound = errors.New(\"not found\")"),
+            "{w}"
+        );
+        assert!(w.contains("var ErrAlias = ErrNotFound"), "{w}");
+        assert!(
+            w.contains("var ErrBadInput = errors.New(\"bad input\")"),
+            "{w}"
+        );
+        assert!(!w.contains("ErrOtherOS"), "{w}");
+        assert!(w.contains("hasText: true"), "{w}");
+        assert!(
+            w.contains("func rustAnythingToErr(msg string) error"),
+            "{w}"
+        );
+        assert!(w.contains("fmt.Errorf(\"%w: %s\""), "{w}");
+        assert!(
+            w.contains("rustAnythingToErr(rustAnythingErr(errp))"),
+            "{w}"
+        );
+        assert!(!w.contains("errors.New(rustAnythingErr(errp))"), "{w}");
+
+        let d = driver(&manifest, "example.com/app/store");
+        assert!(d.contains("errors.Is(err, pkg.ErrNotFound)"), "{d}");
+        assert!(!d.contains("ErrOtherOS"), "{d}");
+        assert!(d.contains("res[\"sentinel\"] = s"), "{d}");
+        assert!(d.contains("delete(got, \"sentinel\")"), "{d}");
+
+        let s = shadow(&manifest, "example.com/app/store");
+        assert!(s.contains("var ErrNotFound = orig.ErrNotFound"), "{s}");
+        assert!(s.contains("func remapErr(err error) error"), "{s}");
+        assert!(s.contains("remapErr(n1)"), "{s}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn diff_handles_legacy_cases_without_sentinel_and_rejects_plain_error() {
+        if std::process::Command::new("go")
+            .arg("version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!(
+            "rust-anything-go-sentinel-diff-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("store")).unwrap();
+        std::fs::create_dir_all(dir.join("drv")).unwrap();
+
+        let src = r#"package store
+
+import "errors"
+
+var ErrNotFound = errors.New("not found")
+
+func Lookup(id int) (string, error) {
+	if id == 1 {
+		return "", ErrNotFound
+	}
+	return "", errors.New("not found")
+}
+"#;
+        std::fs::write(dir.join("go.mod"), "module example.com/app\n\ngo 1.22\n").unwrap();
+        std::fs::write(dir.join("store/store.go"), src).unwrap();
+
+        let exports = crate::lang::go::exports("store/store.go", src);
+        let manifest = Manifest {
+            schema: String::new(),
+            root: dir.clone(),
+            root_written: None,
+            unit: "store/".into(),
+            language: crate::lang::Lang::Go,
+            kind: crate::bridge::Kind::Ffi,
+            crate_name: "store-rs".into(),
+            exports,
+            classes: vec![],
+            js_only: vec![],
+            batches: vec![],
+            allocator: Default::default(),
+            float_tolerance: None,
+            ignore_key_order: false,
+        };
+        let drv = driver(&manifest, "example.com/app/store");
+        std::fs::write(dir.join("drv/main.go"), drv).unwrap();
+
+        // 1) Legacy case (no "sentinel" key) passes even though Lookup(1) returns ErrNotFound.
+        // 2) Recorded sentinel case passes when Lookup(1) returns ErrNotFound.
+        // 3) Recorded sentinel case fails when Lookup(2) returns a plain error with the same text.
+        let cases_path = dir.join("cases.jsonl");
+        let out_path = dir.join("out.json");
+        std::fs::write(
+            &cases_path,
+            concat!(
+                "{\"fn\":\"Lookup\",\"args\":[1],\"error\":\"not found\"}\n",
+                "{\"fn\":\"Lookup\",\"args\":[1],\"error\":\"not found\",\"sentinel\":\"ErrNotFound\"}\n",
+                "{\"fn\":\"Lookup\",\"args\":[2],\"error\":\"not found\",\"sentinel\":\"ErrNotFound\"}\n",
+            ),
+        )
+        .unwrap();
+
+        let status = std::process::Command::new("go")
+            .current_dir(&dir)
+            .args([
+                "run",
+                "./drv",
+                "diff",
+                cases_path.to_str().unwrap(),
+                out_path.to_str().unwrap(),
+            ])
+            .status()
+            .unwrap();
+        assert!(status.success(), "go driver diff failed to run");
+
+        let summary: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&out_path).unwrap()).unwrap();
+        assert_eq!(summary["total"], 3, "{summary}");
+        assert_eq!(summary["passed"], 2, "{summary}");
+        assert_eq!(summary["failed"], 1, "{summary}");
+        let mismatches = summary["mismatches"].as_array().unwrap();
+        assert_eq!(mismatches.len(), 1, "{summary}");
+        assert_eq!(mismatches[0]["args"], serde_json::json!([2]), "{summary}");
+        assert_eq!(
+            mismatches[0]["expected"]["sentinel"], "ErrNotFound",
+            "{summary}"
+        );
+        assert!(
+            mismatches[0]["actual"].get("sentinel").is_none(),
+            "{summary}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

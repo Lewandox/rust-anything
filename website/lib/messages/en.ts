@@ -2,7 +2,7 @@ export const en = {
   meta: {
     title: 'Rewrite your whole app in Rust, piece by piece',
     description:
-      'Rewrite your app in Rust piece by piece, checked against the original at every step. CLIs, servers and libraries in TypeScript/JavaScript, Python, C, Go, Ruby, Java, PHP and C#.',
+      'Rewrite your app in Rust piece by piece, checked against the original at every step. CLIs, servers and libraries in TypeScript/JavaScript, Python, C, Go, Ruby, Java, Kotlin, PHP, PowerShell and C#.',
   },
   ui: {
     docs: 'Docs',
@@ -109,17 +109,18 @@ export const en = {
     sub: 'rust-anything records what your code does, then replays every recorded case against the Rust port. Your agent writes the Rust. Nothing ships until the outputs match.',
     cta: 'Read the quick start',
     source: 'Source on GitHub',
+    discord: 'Join Discord',
     sourceLanguage: 'Source language',
     bridge: 'bridge',
     verified: 'Verified {lang} port, {what}: {count} recorded cases match',
-    wholeApp: '{lang} apps record and replay against the original today, from the front door in.',
+    tested: '{lang} ports are tested end to end against recordings of the original.',
   },
   home: {
     stats: [
       { v: '32', unit: 'x', k: 'Fuse.js search per query on 50,000 strings, Apple M4' },
       { v: '3.5', unit: 'MB', k: 'json-server idle memory after the lift, from 74 MB in Node' },
       { v: '514/514', unit: '', k: 'json-server HTTP cases matching on a pure Rust binary' },
-      { v: '8', unit: '', k: 'languages: six with verified unit ports, PHP and C# for whole apps' },
+      { v: '10', unit: '', k: 'languages: eight with verified ports, Kotlin and PowerShell tested end to end' },
     ],
     installTitle: 'Install',
     installDesc: 'Install the CLI, then register the MCP server and the workflow skill with Claude Code, Codex, Cursor and Gemini CLI.',
@@ -200,6 +201,7 @@ export const en = {
         ],
       },
     ],
+    slowLegend: 'Orange rows are where Rust gains little or loses: the honest cases, shown on purpose.',
     benchTitle: 'json-server benchmark · requests per second, run 1 / run 2 · Apple M4, Node 24.15.0',
     benchHead: ['Request (fixture database)', 'Node, 1 conn.', 'Rust, 1 conn.', 'Node, 50 conn.', 'Rust, 50 conn.'],
     benchPostRow: 'POST /comments, 10 connections',
@@ -207,9 +209,10 @@ export const en = {
       'Where the gap is small: one connection reading the whole 10,000-post list (1.2x), and writes on the big database (1.1 to 1.2x), since both rewrite the whole file on every write. [Full tables](/docs/real-world/json-server)',
     langsTitle: 'Languages',
     langsDesc:
-      'The language is detected from the repository. Every language except C also gets batches: the items cross once and stay in Rust, on all cores.',
+      'The language is detected from the repository. Every language except C, PHP, C# and PowerShell also gets batches: the items cross once and stay in Rust, on all cores.',
     verified: 'Verified',
     wholeApps: 'Whole apps',
+    tested: 'Tested',
     langMeta: {
       typescript: 'napi-rs or wasm-bindgen. json-server, Fuse.js, vercel/ms, x18n',
       python: 'PyO3. CPython colorsys: 2,400/2,400',
@@ -217,9 +220,16 @@ export const en = {
       go: 'cgo and a binary wire. Go path: 2,642/2,642',
       ruby: 'magnus. shellwords: 1,617/1,617',
       java: 'JNI and a binary wire. JDK facade: 4,492/4,492',
-      php: 'whole-app record and replay; unit bridges next',
-      csharp: 'whole-app record and replay; unit bridges next',
+      php: 'ext-ffi. PEAR XML_Util: 1,838/1,838',
+      csharp: 'P/Invoke. Google.Protobuf: 2,941/2,941',
+      kotlin: 'JNI through the Java bridge. Tested on a Gradle fixture',
+      powershell: 'P/Invoke, pwsh 7.4+. Tested on a .psm1 fixture',
     },
+    sponsoredBy: 'Sponsored by',
+    prettierTitle: 'Prettier, ported to Rust',
+    prettierDesc: 'Prettier and its Rust port format the same 59 real files, one process per file: Prettier takes 3.63 s, the Rust port 0.20 s, with the same output byte for byte.',
+    prettierAlt: 'Prettier and its Rust port format the same 59 files; the Rust port is 19x faster with identical output.',
+    sponsorWallAlt: 'The people who sponsor rust-anything on GitHub',
     sponsorsTitle: 'Sponsors',
     sponsorsDesc:
       'rust-anything is free and open source. If it helps your work, please consider sponsoring it. Your support keeps development going.',

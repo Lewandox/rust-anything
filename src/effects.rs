@@ -21,8 +21,10 @@ pub struct EffectsConfig {
     pub http: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub smtp: bool,
+    /// Mail is recorded as decoded headers and MIME parts. Configs saved before it existed leave
+    /// it out and keep recording the raw DATA, so their cases still replay.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub smtp_raw: bool,
+    pub smtp_parts: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -49,13 +51,14 @@ impl EffectsConfig {
         db_dump: Option<&str>,
     ) -> Result<Option<Self>> {
         let mut config = EffectsConfig::default();
+        let mut raw = false;
         for kind in kinds.iter().flat_map(|k| k.split(',')).map(str::trim) {
             match kind {
                 "http" => config.http = true,
                 "smtp" => config.smtp = true,
                 "smtp-raw" => {
                     config.smtp = true;
-                    config.smtp_raw = true;
+                    raw = true;
                 }
                 "" => {}
                 other => bail!("unknown effect `{other}`: use http, smtp or smtp-raw"),
@@ -78,6 +81,7 @@ impl EffectsConfig {
             }
             config.env.insert(var.to_string(), kind.to_string());
         }
+        config.smtp_parts = config.smtp && !raw;
         config.db_reset = db_reset.map(str::to_string);
         config.db_dump = db_dump.map(str::to_string);
         Ok((!config.is_empty() || config.db_reset.is_some()).then_some(config))
@@ -113,10 +117,10 @@ impl Sinks {
             .http
             .then(|| listen(&events, &active, serve_http))
             .transpose()?;
-        let smtp_handler: Handler = if config.smtp_raw {
-            serve_smtp_raw
-        } else {
+        let smtp_handler: Handler = if config.smtp_parts {
             serve_smtp
+        } else {
+            serve_smtp_raw
         };
         let smtp = config
             .smtp
@@ -160,9 +164,10 @@ impl Sinks {
         out
     }
 
-    pub fn reset(&self, cwd: &Path) -> Result<()> {
+    /// Runs `--db-reset` in `cwd`, the folder the case or server runs in.
+    pub fn reset(&self, cwd: &Path, repo: &Path) -> Result<()> {
         if let Some(cmd) = &self.config.db_reset {
-            let out = shell(cmd, cwd, &self.env())?;
+            let out = shell(cmd, cwd, repo, &self.env())?;
             if !out.status.success() {
                 bail!(
                     "--db-reset `{cmd}` failed ({}): {}",
@@ -174,7 +179,8 @@ impl Sinks {
         Ok(())
     }
 
-    pub fn take(&self, cwd: &Path) -> Vec<u8> {
+    /// Collects the effects and runs `--db-dump` in `cwd`, the folder the case or server ran in.
+    pub fn take(&self, cwd: &Path, repo: &Path) -> Vec<u8> {
         let deadline = Instant::now() + SETTLE;
         while self.active.load(Ordering::SeqCst) > 0 && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(10));
@@ -186,7 +192,7 @@ impl Sinks {
             .unwrap_or_default();
         if let Some(cmd) = &self.config.db_dump {
             text.push_str("db\n");
-            match shell(cmd, cwd, &self.env()) {
+            match shell(cmd, cwd, repo, &self.env()) {
                 Ok(out) => {
                     text.push_str(&String::from_utf8_lossy(&out.stdout));
                     if !out.status.success() {
@@ -214,17 +220,227 @@ impl Drop for Sinks {
     }
 }
 
-fn shell(cmd: &str, cwd: &Path, env: &[(String, String)]) -> Result<crate::process::Output> {
+/// Extensions of the files `with_repo_scripts` points at the repository.
+const SCRIPTS: [&str; 14] = [
+    "py", "sh", "bash", "js", "mjs", "cjs", "ts", "rb", "php", "pl", "ps1", "bat", "cmd", "sql",
+];
+
+/// The command runs where the case runs, so a script it names by a relative path (`reset.py`,
+/// `"my scripts/reset.py"`, `< schema.sql`) is pointed at the repository's copy. Other words, such
+/// as `app.db`, the target of an output redirect (`> snapshot.sql`), a here-string and the body of a
+/// here-document stay as written: they name the case's own files or are input. Everything else in
+/// the command is kept as written.
+fn with_repo_scripts(cmd: &str, repo: &Path) -> String {
+    let mut out = String::with_capacity(cmd.len());
+    let mut kept = 0;
+    let mut skip_next = false;
+    for word in shell_words(cmd) {
+        if word.op {
+            // The word after `>`, `>>` or `2>` is an output, after `<<` a here-document's
+            // delimiter, after `<<<` a here-string: none is a file to read.
+            skip_next = word.text.contains('>') || word.text.starts_with("<<");
+            continue;
+        }
+        if std::mem::take(&mut skip_next) {
+            continue;
+        }
+        let path = word.text.as_str();
+        let script = Path::new(path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| SCRIPTS.contains(&e.to_ascii_lowercase().as_str()));
+        let in_repo = repo.join(path);
+        if script && Path::new(path).is_relative() && in_repo.is_file() {
+            out.push_str(&cmd[kept..word.start]);
+            out.push_str(&quoted(&in_repo));
+            kept = word.end;
+        }
+    }
+    out.push_str(&cmd[kept..]);
+    out
+}
+
+/// A word of a shell command: where it sits in the command, its text without quotes, and whether
+/// it is a redirect operator (`<`, `>`, `>>`, `<<`, `<<-`, `<<<`) rather than a word.
+struct ShellWord {
+    start: usize,
+    end: usize,
+    text: String,
+    op: bool,
+}
+
+/// Splits a command into words as the shell does: whitespace, `;`, `&` and `|` separate words
+/// outside quotes, an unquoted `<` or `>` starts a redirect operator of its own, and quotes group
+/// without being part of the text. The body of a here-document is input, so it gives no words.
+/// cmd quotes with `"` and escapes with `^`; sh also quotes with `'`, escapes with a backslash, and
+/// skips a comment (`#` at the start of a word) to the end of the line.
+fn shell_words(cmd: &str) -> Vec<ShellWord> {
+    shell_words_as(cmd, cfg!(not(windows)))
+}
+
+/// `shell_words` as sh (`unix`) or cmd reads the command.
+fn shell_words_as(cmd: &str, unix: bool) -> Vec<ShellWord> {
+    let mut words = Vec::new();
+    let mut word: Option<ShellWord> = None;
+    let mut quote = None;
+    // Here-documents whose bodies start on the next line: the delimiter, and whether it is `<<-`,
+    // which strips leading tabs.
+    let mut heredocs = Vec::new();
+    // cmd blocks open, `(` at the start of a word, and not yet closed.
+    let mut blocks = 0usize;
+    let mut i = 0;
+    while let Some(c) = cmd[i..].chars().next() {
+        let len = c.len_utf8();
+        // A line continuation (`\` in sh, `^` in cmd, then a newline) joins the lines before the
+        // command is split into words, so it is part of no word and makes none of its own.
+        let escape = if unix { '\\' } else { '^' };
+        if quote.is_none() && c == escape {
+            let rest = &cmd[i + len..];
+            if let Some(newline) = ["\r\n", "\n"].into_iter().find(|n| rest.starts_with(n)) {
+                i += len + newline.len();
+                continue;
+            }
+        }
+        let in_op = word.as_ref().is_some_and(|w| w.op);
+        let redirect = quote.is_none() && matches!(c, '<' | '>');
+        // sh groups commands with `(` and `)`. cmd does with a `(` that starts a word and the `)`
+        // that closes it; elsewhere a parenthesis is part of a name (`my(1).py`).
+        let opens = !unix && quote.is_none() && c == '(' && word.is_none();
+        let closes = !unix && quote.is_none() && c == ')' && blocks > 0;
+        let separator = quote.is_none()
+            && (c.is_whitespace()
+                || matches!(c, ';' | '&' | '|')
+                || (unix && matches!(c, '(' | ')'))
+                || opens
+                || closes);
+        if opens {
+            blocks += 1;
+        } else if closes {
+            blocks -= 1;
+        }
+        let op_goes_on = redirect || (c == '-' && word.as_ref().is_some_and(|w| w.text == "<<"));
+        if separator || (redirect && !in_op) || (in_op && !op_goes_on) {
+            finish(&mut words, &mut heredocs, word.take());
+        }
+        // sh: an unquoted `#` that starts a word comments out the rest of the line.
+        if unix && c == '#' && quote.is_none() && word.is_none() {
+            i = cmd[i..].find('\n').map_or(cmd.len(), |n| i + n);
+            continue;
+        }
+        if separator {
+            i += len;
+            if c == '\n' && !heredocs.is_empty() {
+                i = past_heredocs(cmd, i, &mut heredocs);
+            }
+            continue;
+        }
+        let w = word.get_or_insert_with(|| ShellWord {
+            start: i,
+            end: i,
+            text: String::new(),
+            op: redirect,
+        });
+        match (quote, c) {
+            (Some(q), c) if c == q => quote = None,
+            // sh: in double quotes a backslash escapes only these, and drops a newline.
+            (Some('"'), '\\') if unix => match cmd[i + len..].chars().next() {
+                Some(next @ ('$' | '`' | '"' | '\\' | '\n')) => {
+                    if next != '\n' {
+                        w.text.push(next);
+                    }
+                    i += len + next.len_utf8();
+                    w.end = i;
+                    continue;
+                }
+                _ => w.text.push('\\'),
+            },
+            (Some(_), c) => w.text.push(c),
+            (None, '"') => quote = Some('"'),
+            (None, '\'') if unix => quote = Some('\''),
+            // A backslash (sh) or caret (cmd) escapes the next character.
+            (None, c) if c == escape => {
+                if let Some(next) = cmd[i + len..].chars().next() {
+                    w.text.push(next);
+                    i += len + next.len_utf8();
+                    w.end = i;
+                    continue;
+                }
+            }
+            (None, c) => w.text.push(c),
+        }
+        i += len;
+        w.end = i;
+    }
+    finish(&mut words, &mut heredocs, word);
+    words
+}
+
+/// Ends a word; a word right after `<<` or `<<-` is the delimiter of a here-document.
+fn finish(words: &mut Vec<ShellWord>, heredocs: &mut Vec<(String, bool)>, word: Option<ShellWord>) {
+    let Some(w) = word.filter(|w| w.end > w.start) else {
+        return;
+    };
+    let after = words
+        .last()
+        .filter(|p| p.op && !w.op)
+        .map(|p| p.text.as_str());
+    if let Some(op @ ("<<" | "<<-")) = after {
+        heredocs.push((w.text.clone(), op == "<<-"));
+    }
+    words.push(w);
+}
+
+/// Skips the bodies of the pending here-documents, which start at `from`, through each closing
+/// delimiter line, and returns where the command goes on.
+fn past_heredocs(cmd: &str, mut from: usize, heredocs: &mut Vec<(String, bool)>) -> usize {
+    for (delimiter, tabs) in heredocs.drain(..) {
+        while from < cmd.len() {
+            let end = cmd[from..].find('\n').map_or(cmd.len(), |n| from + n);
+            let line = cmd[from..end].trim_end_matches('\r');
+            let line = if tabs {
+                line.trim_start_matches('\t')
+            } else {
+                line
+            };
+            from = (end + 1).min(cmd.len());
+            if line == delimiter {
+                break;
+            }
+        }
+    }
+    from
+}
+
+#[cfg(windows)]
+fn quoted(path: &Path) -> String {
+    format!("\"{}\"", path.display())
+}
+
+#[cfg(not(windows))]
+fn quoted(path: &Path) -> String {
+    format!("'{}'", path.display().to_string().replace('\'', r"'\''"))
+}
+
+fn shell(
+    cmd: &str,
+    cwd: &Path,
+    repo: &Path,
+    env: &[(String, String)],
+) -> Result<crate::process::Output> {
+    let cmd = with_repo_scripts(cmd, repo);
     #[cfg(windows)]
     let mut c = {
+        use std::os::windows::process::CommandExt as _;
+        // `/S` strips exactly the outer quotes, so the command keeps the quotes `quoted` added;
+        // `arg` would escape them as `\"`, which cmd does not read.
         let mut c = Command::new("cmd");
-        c.args(["/C", cmd]);
+        c.args(["/S", "/C"]).raw_arg(format!("\"{cmd}\""));
         c
     };
     #[cfg(not(windows))]
     let mut c = {
         let mut c = Command::new("sh");
-        c.args(["-c", cmd]);
+        c.args(["-c", &cmd]);
         c
     };
     c.current_dir(cwd)
@@ -466,6 +682,216 @@ fn serve_smtp_mode(stream: TcpStream, events: &Mutex<Vec<String>>, raw: bool) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn only_scripts_of_the_repository_are_pointed_at_it() {
+        let repo = std::env::temp_dir().join(format!("ra-effects-scripts-{}", std::process::id()));
+        std::fs::create_dir_all(repo.join("scripts")).unwrap();
+        for file in ["reset.py", "scripts/seed.sh", "app.db"] {
+            std::fs::write(repo.join(file), "").unwrap();
+        }
+        let at = |file: &str| quoted(&repo.join(file));
+        assert_eq!(
+            with_repo_scripts("python3 reset.py --all", &repo),
+            format!("python3 {} --all", at("reset.py"))
+        );
+        assert_eq!(
+            with_repo_scripts("sh scripts/seed.sh && sqlite3 app.db .dump", &repo),
+            format!("sh {} && sqlite3 app.db .dump", at("scripts/seed.sh"))
+        );
+        // Not in the repository, or not a relative path: left as written.
+        assert_eq!(
+            with_repo_scripts("python3 missing.py", &repo),
+            "python3 missing.py"
+        );
+        let absolute = repo.join("reset.py").display().to_string();
+        assert_eq!(
+            with_repo_scripts(&format!("python3 {absolute}"), &repo),
+            format!("python3 {absolute}")
+        );
+        std::fs::remove_dir_all(&repo).unwrap();
+    }
+
+    #[test]
+    fn script_words_are_read_as_the_shell_reads_them() {
+        let repo = std::env::temp_dir().join(format!("ra-effects-words-{}", std::process::id()));
+        std::fs::create_dir_all(repo.join("my scripts")).unwrap();
+        for file in [
+            "reset.py",
+            "my scripts/seed.py",
+            "schema.sql",
+            "snapshot.sql",
+        ] {
+            std::fs::write(repo.join(file), "").unwrap();
+        }
+        let at = |file: &str| quoted(&repo.join(file));
+        // Quoted, and quoted with a space.
+        assert_eq!(
+            with_repo_scripts(r#"python3 "reset.py""#, &repo),
+            format!("python3 {}", at("reset.py"))
+        );
+        assert_eq!(
+            with_repo_scripts(r#"python3 "my scripts/seed.py" --all"#, &repo),
+            format!("python3 {} --all", at("my scripts/seed.py"))
+        );
+        // An input is the repository's; an output stays in the case's folder.
+        assert_eq!(
+            with_repo_scripts("sqlite3 app.db < schema.sql", &repo),
+            format!("sqlite3 app.db < {}", at("schema.sql"))
+        );
+        assert_eq!(
+            with_repo_scripts("sqlite3 app.db <schema.sql", &repo),
+            format!("sqlite3 app.db <{}", at("schema.sql"))
+        );
+        for cmd in [
+            "sqlite3 app.db .dump > snapshot.sql",
+            "sqlite3 app.db .dump >> snapshot.sql",
+            "sqlite3 app.db .dump >snapshot.sql",
+            "sqlite3 app.db .dump 2> snapshot.sql",
+        ] {
+            assert_eq!(with_repo_scripts(cmd, &repo), cmd);
+        }
+        // Spacing and operators around the words are kept as written.
+        assert_eq!(
+            with_repo_scripts("python3  reset.py;  echo  ok", &repo),
+            format!("python3  {};  echo  ok", at("reset.py"))
+        );
+        std::fs::remove_dir_all(&repo).unwrap();
+    }
+
+    #[test]
+    fn sh_continuations_escapes_and_parentheses_are_read_as_sh_reads_them() {
+        let words = |cmd: &str| -> Vec<String> {
+            shell_words_as(cmd, true)
+                .into_iter()
+                .map(|w| w.text)
+                .collect()
+        };
+        // A line continuation is no part of any word, and makes none of its own.
+        assert_eq!(words("python3 \\\nreset.py"), ["python3", "reset.py"]);
+        assert_eq!(words("python3 \\\n  reset.py"), ["python3", "reset.py"]);
+        assert_eq!(words("echo '' x"), ["echo", "", "x"]);
+        let ops: Vec<(String, bool)> = shell_words_as("echo result > \\\n snapshot.sql", true)
+            .into_iter()
+            .map(|w| (w.text, w.op))
+            .collect();
+        assert_eq!(
+            ops,
+            [
+                ("echo".to_string(), false),
+                ("result".to_string(), false),
+                (">".to_string(), true),
+                ("snapshot.sql".to_string(), false)
+            ]
+        );
+        assert_eq!(words("python3 re\\\nset.py"), ["python3", "reset.py"]);
+        assert_eq!(words("python3 \"re\\\nset.py\""), ["python3", "reset.py"]);
+        // Unquoted parentheses group commands; quoted ones are part of a name.
+        assert_eq!(words("(python3 reset.py)"), ["python3", "reset.py"]);
+        assert_eq!(words("python3 '(x).py'"), ["python3", "(x).py"]);
+        // In double quotes a backslash escapes only `$`, `` ` ``, `"`, `\` and a newline.
+        assert_eq!(words(r#"echo "a\"b" "c\d""#), ["echo", "a\"b", "c\\d"]);
+        assert_eq!(words(r"echo 'a\b'"), ["echo", "a\\b"]);
+    }
+
+    #[test]
+    fn cmd_blocks_and_carets_are_read_as_cmd_reads_them() {
+        let words = |cmd: &str| -> Vec<String> {
+            shell_words_as(cmd, false)
+                .into_iter()
+                .map(|w| w.text)
+                .collect()
+        };
+        // A `(` that starts a word opens a block, and a `)` in a block closes it.
+        assert_eq!(
+            words("if exist app.db (python reset.py)"),
+            ["if", "exist", "app.db", "python", "reset.py"]
+        );
+        assert_eq!(words("(python reset.py)"), ["python", "reset.py"]);
+        // Outside a block, and quoted or escaped with `^`, parentheses are part of a name.
+        assert_eq!(words("python my(1).py"), ["python", "my(1).py"]);
+        assert_eq!(words(r#"python "a (1).py""#), ["python", "a (1).py"]);
+        assert_eq!(words("(echo ^(x^))"), ["echo", "(x)"]);
+    }
+
+    #[test]
+    fn sh_comments_give_no_words() {
+        let words = |cmd: &str| -> Vec<String> {
+            shell_words_as(cmd, true)
+                .into_iter()
+                .map(|w| w.text)
+                .collect()
+        };
+        // A comment's `<<EOF` starts no here-document, so the next line is still read.
+        assert_eq!(words("# <<EOF\npython3 reset.py"), ["python3", "reset.py"]);
+        assert_eq!(
+            words("python3 reset.py # then <<EOF\necho ok"),
+            ["python3", "reset.py", "echo", "ok"]
+        );
+        // `#` inside a word or in quotes is text.
+        assert_eq!(words("echo a#b '#c' \"#d\""), ["echo", "a#b", "#c", "#d"]);
+        // cmd has no `#` comments.
+        assert_eq!(
+            shell_words_as("echo # x", false)
+                .into_iter()
+                .map(|w| w.text)
+                .collect::<Vec<_>>(),
+            ["echo", "#", "x"]
+        );
+    }
+
+    #[test]
+    fn redirects_and_here_documents_are_read_as_the_shell_reads_them() {
+        let repo = std::env::temp_dir().join(format!("ra-effects-heredoc-{}", std::process::id()));
+        std::fs::create_dir_all(&repo).unwrap();
+        for file in ["reset.py", "schema.sql", "snapshot.sql"] {
+            std::fs::write(repo.join(file), "").unwrap();
+        }
+        let at = |file: &str| quoted(&repo.join(file));
+        // A redirect needs no space before it.
+        assert_eq!(
+            with_repo_scripts("sqlite3 app.db<schema.sql", &repo),
+            format!("sqlite3 app.db<{}", at("schema.sql"))
+        );
+        for cmd in [
+            "echo result> snapshot.sql",
+            "echo result>snapshot.sql",
+            "echo result>>snapshot.sql",
+            "python3 check.py 2>&1 >snapshot.sql",
+        ] {
+            assert_eq!(with_repo_scripts(cmd, &repo), cmd);
+        }
+        // A here-document's body and a here-string are input, not words; the command goes on
+        // after the delimiter.
+        let heredoc = "cat <<EOF > notes.txt\nschema.sql\nEOF\npython3 reset.py";
+        assert_eq!(
+            with_repo_scripts(heredoc, &repo),
+            format!(
+                "cat <<EOF > notes.txt\nschema.sql\nEOF\npython3 {}",
+                at("reset.py")
+            )
+        );
+        let tabs = "cat <<-END\n\tschema.sql\n\tEND\npython3 reset.py";
+        assert_eq!(
+            with_repo_scripts(tabs, &repo),
+            format!(
+                "cat <<-END\n\tschema.sql\n\tEND\npython3 {}",
+                at("reset.py")
+            )
+        );
+        assert_eq!(
+            with_repo_scripts("sqlite3 app.db <<< schema.sql", &repo),
+            "sqlite3 app.db <<< schema.sql"
+        );
+        if cfg!(not(windows)) {
+            let quoted_delim = "cat <<'EOF'\nschema.sql\nEOF\npython3 reset.py";
+            assert_eq!(
+                with_repo_scripts(quoted_delim, &repo),
+                format!("cat <<'EOF'\nschema.sql\nEOF\npython3 {}", at("reset.py"))
+            );
+        }
+        std::fs::remove_dir_all(&repo).unwrap();
+    }
+
     fn send(port: u16, text: &str) -> String {
         let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
         s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
@@ -503,13 +929,13 @@ mod tests {
         let mut out = String::new();
         let _ = mail.read_to_string(&mut out);
         assert!(out.contains("221"), "{out}");
-        let text = String::from_utf8(sinks.take(Path::new("."))).unwrap();
+        let text = String::from_utf8(sinks.take(Path::new("."), Path::new("."))).unwrap();
         assert_eq!(
             text,
             "http POST http://hooks.example/new\ncontent-type: application/json\n\n{\"a\":1}\n\
              smtp from <a@x.test> to <b@y.test>\nSubject: hi\npart text/plain\n.dot\n"
         );
-        assert!(sinks.take(Path::new(".")).is_empty());
+        assert!(sinks.take(Path::new("."), Path::new(".")).is_empty());
     }
 
     #[test]
@@ -517,7 +943,7 @@ mod tests {
         let config = EffectsConfig::from_args(&["smtp-raw".into()], &[], None, None)
             .unwrap()
             .unwrap();
-        assert!(config.smtp && config.smtp_raw);
+        assert!(config.smtp && !config.smtp_parts);
         let sinks = Sinks::start(&config).unwrap();
         let env: BTreeMap<String, String> = sinks.env().into_iter().collect();
         let smtp: u16 = env["SMTP_PORT"].parse().unwrap();
@@ -530,11 +956,32 @@ mod tests {
         let mut out = String::new();
         let _ = mail.read_to_string(&mut out);
         assert!(out.contains("221"), "{out}");
-        let text = String::from_utf8(sinks.take(Path::new("."))).unwrap();
+        let text = String::from_utf8(sinks.take(Path::new("."), Path::new("."))).unwrap();
         assert_eq!(
             text,
             "smtp from <a@x.test> to <b@y.test>\nX-Custom: keep\nSubject: hi\n\n.dot\n"
         );
+    }
+
+    #[test]
+    fn a_config_saved_before_smtp_parts_keeps_recording_raw_mail() {
+        let old: EffectsConfig = serde_json::from_str(r#"{"smtp":true}"#).unwrap();
+        assert!(old.smtp && !old.smtp_parts);
+        let parts = EffectsConfig::from_args(&["smtp".into()], &[], None, None)
+            .unwrap()
+            .unwrap();
+        assert!(parts.smtp_parts);
+        let saved: EffectsConfig =
+            serde_json::from_str(&serde_json::to_string(&parts).unwrap()).unwrap();
+        assert_eq!(saved, parts);
+        let env_only = EffectsConfig::from_args(&[], &["MAIL=smtp-url".into()], None, None)
+            .unwrap()
+            .unwrap();
+        assert!(env_only.smtp_parts);
+        let raw = EffectsConfig::from_args(&["smtp,smtp-raw".into()], &[], None, None)
+            .unwrap()
+            .unwrap();
+        assert!(raw.smtp && !raw.smtp_parts);
     }
 
     #[test]

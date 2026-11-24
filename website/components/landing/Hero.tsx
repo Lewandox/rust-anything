@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { GitHubIcon } from '../site/icons'
+import { DiscordIcon, GitHubIcon } from '../site/icons'
 import { REPO_URL } from '../../lib/site'
 import { fill, withLocale } from '../../lib/locales'
 import type { Messages } from '../../lib/messages/en'
@@ -83,14 +83,30 @@ const LANGS: Lang[] = [
     file: 'words.php',
     color: '#777bb4',
     code: ['function word_count(string $t): int {', "  return count(preg_split('/\\s+/', trim($t), -1,", '    PREG_SPLIT_NO_EMPTY));', '}'],
-    bridge: 'whole app',
+    bridge: 'ext-ffi',
+    proof: { what: 'PEAR XML_Util', total: 1838 },
   },
   {
     name: 'C#',
     file: 'Words.cs',
     color: '#9b4f96',
     code: ['static int WordCount(string t) =>', '  t.Split((char[]?)null,', '    StringSplitOptions.RemoveEmptyEntries).Length;'],
-    bridge: 'whole app',
+    bridge: 'P/Invoke',
+    proof: { what: 'Google.Protobuf', total: 2941 },
+  },
+  {
+    name: 'Kotlin',
+    file: 'Words.kt',
+    color: '#7f52ff',
+    code: ['fun wordCount(text: String): Int =', '  text.split(Regex("\\s+")).count { it.isNotEmpty() }'],
+    bridge: 'JNI',
+  },
+  {
+    name: 'PowerShell',
+    file: 'Words.psm1',
+    color: '#5391fe',
+    code: ['function Get-WordCount([string]$Text) {', "  ($Text -split '\\s+' | Where-Object { $_ }).Count", '}'],
+    bridge: 'P/Invoke',
   },
 ]
 
@@ -194,6 +210,10 @@ export default function Hero({ t, locale = 'en' }: { t: Messages['hero']; locale
             <GitHubIcon />
             {t.source}
           </a>
+          <a className="btn btn-quiet" href="https://discord.gg/FXhUEA8eBR">
+            <DiscordIcon />
+            {t.discord}
+          </a>
         </div>
 
         <div className="stage">
@@ -279,7 +299,7 @@ export default function Hero({ t, locale = 'en' }: { t: Messages['hero']; locale
                 </span>
               </>
             ) : (
-              <span>{fill(t.wholeApp, { lang: lang.name })}</span>
+              <span>{fill(t.tested, { lang: lang.name })}</span>
             )}
           </div>
         </div>

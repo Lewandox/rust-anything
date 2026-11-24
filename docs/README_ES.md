@@ -4,12 +4,14 @@
 
 <h1 align="center">rust-anything</h1>
 
-<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · Español · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a></sub></p>
+<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · Español · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a> · <a href="README_AR.md">العربية</a> · <a href="README_FA.md">فارسی</a> · <a href="README_HI.md">हिन्दी</a></sub></p>
 <p align="center"><sub>Esta traducción la mantiene la comunidad y puede quedarse atrás respecto al <a href="../README.md">README en inglés</a>.</sub></p>
 
 <p align="center"><b>Reescribe tu aplicación en Rust y demuestra que sigue comportándose igual.</b><br>
 Apúntalo a tu aplicación: registra lo que hace el original, tu agente de programación escribe el Rust pieza a pieza,<br>
 y cada pieza se comprueba contra ese registro antes de pasar a la siguiente. No traduce código: demuestra la reescritura.</p>
+
+<p align="center"><b>Documentación:</b> <a href="https://rust-anything.com/">https://rust-anything.com/</a></p>
 
 <p align="center">
   <img src="https://img.shields.io/github/languages/top/erkamyaman/rust-anything?logo=rust&label=Rust&color=CE422B" alt="Rust share of the code">
@@ -24,7 +26,7 @@ y cada pieza se comprueba contra ese registro antes de pasar a la siguiente. No 
   <a href="https://github.com/erkamyaman/rust-anything"><img src="https://img.shields.io/github/stars/erkamyaman/rust-anything?style=social" alt="GitHub stars"></a>
 </p>
 
-<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a></p>
+<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a> <a href="https://discord.gg/FXhUEA8eBR"><img src="https://img.shields.io/badge/Join%20the%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Discord"></a></p>
 
 <p align="center"><a href="https://trendshift.io/repositories/363468" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/363468/daily?language=Rust" alt="erkamyaman/rust-anything: #1 Rust repository of the day on Trendshift" width="250" height="55"/></a></p>
 
@@ -267,9 +269,10 @@ el correo dos veces falla:
 | Java | paquete de métodos `public static` | JNI tipado y un cable binario generado, en clases envoltorio con los métodos originales | un driver de reflexión generado |
 | Kotlin | módulo Gradle de funciones de nivel superior y métodos `@JvmStatic` | el puente de Java: JNI tipado en clases envoltorio de Java que llaman a los estáticos de Kotlin compilados | un driver de reflexión generado, con los fuentes Kotlin compilados por `kotlinc` |
 | PHP | archivo o carpeta de funciones de nivel superior (los métodos `public static` se quedan en PHP) | un despachador JSON sobre `ext-ffi`, en un archivo que redeclara las funciones con los parámetros originales | un driver PHP generado; aplicaciones completas con `app record`, `app replay` y la puerta delantera, para CLIs y servidores (`php -S`) |
-| C# | carpeta de métodos `public static` | un despachador JSON sobre P/Invoke, en clases `<namespace>.Rust` con los métodos originales | un driver de reflexión generado, compilado con las fuentes del proyecto por `dotnet build`; aplicaciones completas con `app record`, `app replay` y la puerta delantera, para CLIs y servidores ASP.NET (`dotnet <app>.dll`) |
+| C# | archivo o carpeta de métodos `public static` | un despachador JSON sobre P/Invoke, en clases `<namespace>.Rust` con los métodos originales | un driver de reflexión generado, compilado con las fuentes del proyecto por `dotnet build`; aplicaciones completas con `app record`, `app replay` y la puerta delantera, para CLIs y servidores ASP.NET (`dotnet <app>.dll`) |
+| PowerShell | módulo `.psm1` o script `.ps1` de funciones con bloques `param()` (exportadas con `Export-ModuleMember`) | un despachador JSON sobre P/Invoke, declarado al cargar con Reflection.Emit, en un `.ps1` que redeclara cada función con su bloque `param()` original | un driver `pwsh` generado (PowerShell 7.4+) |
 
-Todos los lenguajes salvo C, PHP y C# reciben además clases por lotes (`--batch`): los elementos cruzan una
+Todos los lenguajes salvo C, PHP, C# y PowerShell reciben además clases por lotes (`--batch`): los elementos cruzan una
 vez y se quedan en Rust, y cada llamada se ejecuta sobre todos ellos en todos los núcleos.
 
 El lenguaje se detecta en el repositorio (`go.mod`, `pom.xml`, `build.gradle`/`build.gradle.kts`, un
@@ -348,7 +351,7 @@ más lentos que .NET; todavía no hay `shadow` para C#
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Patrocinadores: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Patrocinadores: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş, bugrcvi">
     </picture>
   </a>
 </p>

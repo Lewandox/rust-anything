@@ -4,11 +4,13 @@
 
 <h1 align="center">rust-anything</h1>
 
-<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · Deutsch · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a></sub></p>
+<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · Deutsch · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a> · <a href="README_AR.md">العربية</a> · <a href="README_FA.md">فارسی</a> · <a href="README_HI.md">हिन्दी</a></sub></p>
 <p align="center"><sub>Diese Übersetzung wird von der Community gepflegt und kann hinter dem <a href="../README.md">englischen README</a> zurückliegen.</sub></p>
 
 <p align="center"><b>Schreibe deine App in Rust neu und beweise, dass sie sich weiterhin genauso verhält.</b><br>
 Es übersetzt keinen Code: Ihr Coding-Agent (oder Sie) schreibt das Rust, und rust-anything prüft es gegen das Original.</p>
+
+<p align="center"><b>Dokumentation:</b> <a href="https://rust-anything.com/de">https://rust-anything.com/de</a></p>
 
 <p align="center">
   <img src="https://img.shields.io/github/languages/top/erkamyaman/rust-anything?logo=rust&label=Rust&color=CE422B" alt="Rust share of the code">
@@ -23,7 +25,7 @@ Es übersetzt keinen Code: Ihr Coding-Agent (oder Sie) schreibt das Rust, und ru
   <a href="https://github.com/erkamyaman/rust-anything"><img src="https://img.shields.io/github/stars/erkamyaman/rust-anything?style=social" alt="GitHub stars"></a>
 </p>
 
-<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a></p>
+<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a> <a href="https://discord.gg/FXhUEA8eBR"><img src="https://img.shields.io/badge/Join%20the%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Discord"></a></p>
 
 <p align="center"><a href="https://trendshift.io/repositories/363468" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/363468/daily?language=Rust" alt="erkamyaman/rust-anything: #1 Rust repository of the day on Trendshift" width="250" height="55"/></a></p>
 
@@ -229,17 +231,20 @@ Dieselbe Ausgabe reicht nicht. Zeichne auch auf, was die App nach außen sendet,
 | Go | Paket | typisierte cgo-Aufrufe und ein generiertes binäres Wire-Format in einem Paket mit der Original-API | einen generierten Go-Treiber, gebaut als eigenes Modul |
 | Ruby | Datei oder Ordner mit Modulfunktionen | eine magnus-Erweiterung unter den ursprünglichen Modulen | einen generierten Ruby-Treiber |
 | Java | Paket mit `public static`-Methoden | typisiertes JNI und ein generiertes binäres Wire-Format in Wrapper-Klassen mit den Originalmethoden | einen generierten Reflection-Treiber |
+| Kotlin | Gradle-Modul mit Top-Level-Funktionen und `@JvmStatic`-Methoden | die Java-Bridge: typisiertes JNI in Java-Wrapper-Klassen, die die kompilierten Kotlin-Statics aufrufen | ein generierter Reflection-Treiber, mit den Kotlin-Quellen über `kotlinc` kompiliert |
 | PHP | Datei oder Ordner mit Top-Level-Funktionen (`public static`-Methoden bleiben in PHP) | ein JSON-Dispatcher über `ext-ffi`, in einer Datei, die die Funktionen mit den ursprünglichen Parametern neu deklariert | ein generierter PHP-Treiber; ganze Apps mit `app record`, `app replay` und der Front Door, für CLIs und Server (`php -S`) |
+| PowerShell | `.psm1`-Modul oder `.ps1`-Skript mit Funktionen und `param()`-Blöcken (exportiert über `Export-ModuleMember`) | ein JSON-Dispatcher über P/Invoke, beim Laden mit Reflection.Emit deklariert, in einem `.ps1`, das jede Funktion mit ihrem ursprünglichen `param()`-Block neu deklariert | ein generierter `pwsh`-Treiber (PowerShell 7.4+) |
 | C# | Datei oder Ordner mit `public static`-Methoden | ein JSON-Dispatcher über P/Invoke, in `<namespace>.Rust`-Klassen mit den ursprünglichen Methoden | ein generierter Reflection-Treiber, mit den Quellen des Projekts über `dotnet build` kompiliert; ganze Apps mit `app record`, `app replay` und der Front Door, für CLIs und ASP.NET-Server (`dotnet <app>.dll`) |
 
-Jede Sprache außer C, PHP und C# erhält außerdem Batch-Klassen (`--batch`): Die Elemente überqueren die Grenze
+Jede Sprache außer C, PHP, C# und PowerShell erhält außerdem Batch-Klassen (`--batch`): Die Elemente überqueren die Grenze
 einmalig und bleiben in Rust, und jeder Aufruf verarbeitet sie alle auf allen Kernen.
 
-Die Sprache wird anhand des Repositorys erkannt (`go.mod`, `pom.xml`, eine `.csproj` oder `.sln`,
-`pyproject.toml`, `Gemfile`, `composer.json`, `package.json`, sonst die häufigsten Quelldateien);
-`--lang` überschreibt dies. Typen stammen aus dem Quellcode: TS-Typen, Python-Type-Hints, C-, Go-,
-Java- und C#-Signaturen, Ruby-YARD-Tags, PHP-Typen und phpdoc; untypisierte Parameter, die als Zahlen
-verwendet werden, werden als Zahlen abgeleitet.
+Die Sprache wird anhand des Repositorys erkannt (`go.mod`, `pom.xml`, `build.gradle`/`build.gradle.kts`,
+eine `.csproj` oder `.sln`, `pyproject.toml`, `Gemfile`, `composer.json`, `package.json`, sonst die
+häufigsten Quelldateien); ein Gradle-Modul mit `.kt`-Quellen und keinen `.java`-Quellen ist Kotlin,
+gemischte Module bleiben Java. `--lang` überschreibt dies. Typen stammen aus dem Quellcode: TS-Typen,
+Python-Type-Hints, C-, Go-, Java-, Kotlin- und C#-Signaturen, Ruby-YARD-Tags, PHP-Typen und phpdoc;
+untypisierte Parameter, die als Zahlen verwendet werden, werden als Zahlen abgeleitet.
 
 Für PHP plant `analyze` eine PHP-App (Composer-Pakete und PSR-4-Autoloading, Risiken
 wie lose Vergleiche und Integer-Überläufe in Floats, Zuordnung von Composer-Paketen zu Crates), und ein
@@ -291,7 +296,7 @@ Aufzeichnen und Vergleichen): rufe die generierten `<namespace>.Rust`-Klassen au
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Sponsoren: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Sponsoren: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş, bugrcvi">
     </picture>
   </a>
 </p>

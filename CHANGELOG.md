@@ -2,8 +2,87 @@
 
 ## Unreleased
 
-- The workflow skill's description names Kotlin, PHP, C# and PowerShell, so agents also pick it for those
-  ports (#280).
+- `app record --effects smtp` records each email as its decoded `From`, `To`, `Cc` and `Subject`
+  and its MIME parts (attachments as name, type, size and SHA-256), so the same mail sent with
+  different MIME framing matches. `--effects smtp-raw` keeps the raw DATA, and cases recorded
+  before this keep replaying against the raw form until recorded again (#333).
+- Go ports map matching error messages back to the package's exported sentinel errors, so callers using `errors.Is` keep working (#365).
+- `record --ignore-key-order` saves the choice with the crate, so `gate`, `enable`, `report` and
+  `go` compare objects regardless of key order too; `--no-ignore-key-order` undoes it (#352).
+- `map` gives each unit without a port `analyze`'s status and lists the blocked and kept ones
+  with the reason, so they no longer read as work left to port (#350).
+- On Windows, `profile` and `go` find the project's own functions in a Node workload: Node's
+  `file:///C:/...` frame URLs kept the slash before the drive letter, so no frame matched the
+  project root and `go` stopped with `no hot function to port`.
+- `app record` and `app replay` fail with `port <port> is already in use` before spawning a server
+  on an occupied port and check whether the child exited before treating the port as ready (#326).
+- `Err("Outer+Inner: message")` in a C# port throws the nested exception the recording names,
+  like `Acme.Parser+ParseException`, instead of falling back to `InvalidOperationException` (#363).
+- Recording again removes the cases the last recording wrote and this one did not (an input that
+  was removed or renamed, or a case that timed out), for CLIs and in `http/`, so replay no longer
+  compares against them. Cases added by hand are kept and named in the output, as are the files
+  a kept case reads through `fs.base`; switching between a CLI and `--http` removes nothing (#329).
+- `app record --http` and `app replay` stop the whole server when it was started through a wrapper
+  (`npm start`, `sh -c`, a `.bat` file): every process it started, waiting until all are gone.
+  Ctrl-C during `app record --http` still stops the server too.
+  The real server used to keep running, so the next run met it on the port and a replay could
+  pass against it (#325).
+- `record`, `fuzz`, `diff` and `bench` pass `--experimental-strip-types` to Node 22.6 to 22.17 (and
+  23.0 to 23.5), which only strip TypeScript types with that flag, so TS units no longer fail with
+  `ERR_UNKNOWN_FILE_EXTENSION` on Node versions `doctor` accepts (#340).
+- `app record --http` and `app replay` find a server that listens only on `::1` (a `localhost`
+  bind can get IPv6 only) and send its requests there, instead of waiting 60 seconds and failing
+  with `did not listen within 60s` (#327).
+- `app record --db-reset` and `--db-dump` run in the folder a CLI case runs in, as they already did
+  for servers, so a database the app keeps next to it is the one reset and dumped, and the
+  repository's own copy is left alone. Scripts they name by a relative path with a script
+  extension (`reset.py`, `"my scripts/seed.sh"`, `< schema.sql`) still come from the repository;
+  output redirects (`> dump.sql`, also unspaced) stay in the case's folder, and here-document
+  bodies and `#` comments are left as written. Quotes, line continuations and `( )` blocks are
+  read as sh and cmd read them (#324).
+- `bridge` types Go `uint64` and `uint` as `u64` and `uintptr` as `usize` in `port.rs`, alone or as
+  slice items. They were `i64`, so a result above `i64::MAX` could not go back to Go and failed
+  `diff` (#357).
+
+## 4.0.0 (2026-11-24)
+
+- A documentation site at [rust-anything.com](https://rust-anything.com): the README, the guides
+  and the real-world ports in 18 languages, with search, falling back to English for pages not
+  translated yet. The README links it, and the project has a Discord.
+- Python `bytes`, `bytearray` and `memoryview` hints become `Vec<u8>` in the port, and the PyO3
+  bridge takes any of the three and returns `bytes` without going through JSON (#370, #381 by
+  @Lewandox).
+- An integer default on a Python `float` parameter (`def f(x: float = 1)`) types as `f64` instead
+  of failing the bridge (#380 by @d0ukan).
+- `doctor` checks `adb`, which Android recording needs (#308 by @XiaoBinGan).
+- `analyze` refuses a folder that does not exist (#294 by @AyhamJo7), and `analyze --lang` for a
+  language the folder does not hold is an error that names the language it found and why any
+  files were left out, instead of an empty plan with exit 0 (#345, #385 by @puretechteam).
+- `analyze` lists distinct lines as a risk's samples, so several hits on one line no longer hide
+  the next location (#347, #382 by @puretechteam).
+- `map` says when no unit was found (#296 by @AyhamJo7), refuses a file instead of printing an
+  empty map (#307 by @XiaoBinGan), and refuses `--write` with `--json` instead of printing JSON
+  and writing nothing (#343, #383 by @puretechteam).
+- `diff`, `disable`, `report` and `shadow` on a missing folder say to run `bridge` first (#306 by
+  @P-r-e-m-i-u-m, #302 by @Kiddo4993).
+- `app record` joins example commands wrapped with a trailing `\`, so a curl example split over
+  lines becomes its request (#328, #384 by @puretechteam).
+- Parsers: C integer specifiers in any order (#374), Java wildcards named as wildcards and still
+  refused (#375), Java C-style array parameters keep their dimensions (#378), phpdoc types that
+  contain a space (#376), and YARD `@param` tags in either order (#377), all by @XiaoBinGan.
+- HTTP recording treats only two hex digits after `%` as an escape (#298 by @XiaoBinGan).
+- `bench` for Go says how much slower instead of "1.0x slower" (#299 by @XiaoBinGan), the card
+  never prints a non-zero fallback rate as 0.0% or a partial one as 100.0% (#304 by
+  @puretechteam), and `report` leaves out the Risk guide when no unit has a risk (#320 by
+  @puretechteam).
+- The workflow skill's description names Kotlin, PHP, C# and PowerShell, so agents also pick it
+  for those ports (#280, #313 by @athrvd77).
+- Docs: an Indonesian README (#295 by @agusmakmun); the PHP and C# unit bridge in Traditional
+  Chinese (#316 by @XiaoBinGan), Portuguese (#318 by @XiaoBinGan) and Vietnamese (#379 by @tlq5l);
+  the Russian README brought up to date (#319 by @onlykushalll); the PHP wrapper and the `.Rust`
+  namespace explained (#317), PowerShell named in the descriptions (#312) and the plugin directory
+  listing updated (#315), by @XiaoBinGan; the runtime versions `doctor` checks and `app replay`'s
+  default timeout documented (#321, #322 by @puretechteam).
 
 ## 3.4.0 (2026-11-23)
 

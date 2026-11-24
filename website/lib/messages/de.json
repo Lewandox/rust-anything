@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Schreib deine ganze App Stück für Stück in Rust neu",
-    "description": "Schreib deine App Stück für Stück in Rust neu, bei jedem Schritt gegen das Original geprüft. CLIs, Server und Bibliotheken in TypeScript/JavaScript, Python, C, Go, Ruby, Java, PHP und C#."
+    "description": "Schreib deine App Stück für Stück in Rust neu, bei jedem Schritt gegen das Original geprüft. CLIs, Server und Bibliotheken in TypeScript/JavaScript, Python, C, Go, Ruby, Java, Kotlin, PHP, PowerShell und C#."
   },
   "ui": {
     "docs": "Doku",
@@ -130,9 +130,9 @@
         "k": "json-server HTTP-Fälle stimmen auf einer reinen Rust-Binary überein"
       },
       {
-        "v": "8",
+        "v": "10",
         "unit": "",
-        "k": "Sprachen: sechs mit verifizierten Unit-Portierungen, PHP und C# für ganze Apps"
+        "k": "languages: eight with verified ports, Kotlin and PowerShell tested end to end"
       }
     ],
     "installTitle": "Installation",
@@ -258,7 +258,7 @@
     "benchPostRow": "POST /comments, 10 Verbindungen",
     "benchNote": "Wo der Abstand klein ist: eine Verbindung, die die ganze Liste mit 10,000 Posts liest (1.2x), und Schreibzugriffe auf die große Datenbank (1.1 bis 1.2x), da beide bei jedem Schreiben die ganze Datei neu schreiben. [Vollständige Tabellen](/docs/real-world/json-server)",
     "langsTitle": "Sprachen",
-    "langsDesc": "Die Sprache wird aus dem Repository erkannt. Jede Sprache außer C bekommt auch Batches: Die Elemente wechseln einmal hinüber und bleiben in Rust, auf allen Kernen.",
+    "langsDesc": "Die Sprache wird aus dem Repository erkannt. Jede Sprache außer C, PHP, C# und PowerShell bekommt auch Batches: Die Elemente wechseln einmal hinüber und bleiben in Rust, auf allen Kernen.",
     "verified": "Verifiziert",
     "wholeApps": "Ganze Apps",
     "langMeta": {
@@ -267,9 +267,7 @@
       "c": "extern \"C\". glibc-Fassade: 1,859/1,859",
       "go": "cgo und ein binärer Wire. Go path: 2,642/2,642",
       "ruby": "magnus. shellwords: 1,617/1,617",
-      "java": "JNI und ein binärer Wire. JDK-Fassade: 4,492/4,492",
-      "php": "Aufzeichnen und Abspielen ganzer Apps; Unit-Bridges folgen",
-      "csharp": "Aufzeichnen und Abspielen ganzer Apps; Unit-Bridges folgen"
+      "java": "JNI und ein binärer Wire. JDK-Fassade: 4,492/4,492"
     },
     "sponsorsTitle": "Sponsoren",
     "sponsorsDesc": "rust-anything ist kostenlos und Open Source. Wenn es dir bei deiner Arbeit hilft, denk bitte über ein Sponsoring nach. Deine Unterstützung hält die Entwicklung am Laufen.",

@@ -6,7 +6,7 @@ Generated from the MCP server's tool list by `tests/tools.rs`; do not edit by ha
 
 Tool `analyze` · CLI `rust-anything analyze`
 
-Map a repository (TypeScript/JavaScript, Python, C, Go, Ruby, Java or Kotlin): units, port order (waves), risks with file:line, bridge per unit, dependency-to-crate fit, and `start_here`: the best first ports.
+Map a repository (TypeScript/JavaScript, Python, C, Go, Ruby, Java, Kotlin, PHP, C# or PowerShell): units, port order (waves), risks with file:line, bridge per unit, dependency-to-crate fit, and `start_here`: the best first ports.
 
 Read-only.
 
@@ -62,6 +62,7 @@ Runs the original's code or commands.
 | `module` | string |  | JS only: import the original from this JS module instead of the TS source. |
 | `resolve_from` | string |  | Resolve npm packages from this folder's node_modules. |
 | `float_tolerance` | number |  | Numeric code: floats match when they differ by at most this times the larger magnitude (absolute below 1), e.g. 1e-9. Saved with the crate for diff and gate; 0 removes it. |
+| `ignore_key_order` | boolean |  | Compare objects regardless of key order, now and in every later diff, gate, enable and report; false saves the opposite. |
 | `node_args` | string[] |  | Extra arguments for node, e.g. ["--import=tsx"]. |
 | `test_command` | string[] |  | TS/JS or Python: also record every call the original's own test suite makes to the unit's functions, e.g. ["npx", "jest"] or ["pytest"]. Runs in the original's folder. |
 | `profile` | string |  | Record on this machine (default) or on a connected Android device (JVM crates). |
@@ -140,11 +141,13 @@ Runs the original's code or commands.
 
 Tool `enable` · CLI `rust-anything enable`
 
-Switch a ported TS/JS or Python unit on: one marked block in each original source file rebinds the unit's functions to the built Rust module, for every caller, with no import changed. RUST_ANYTHING_MODE=old or RUST_ANYTHING_UNIT_<NAME>=original runs the original for one run. Refuses while recorded cases differ unless `force`.
+Switch a ported TS/JS or Python unit on: one marked block in each original source file rebinds the unit's functions to the built Rust module, for every caller, with no import changed. RUST_ANYTHING_MODE=old or RUST_ANYTHING_UNIT_<NAME>=original runs the original for one run. Refuses while recorded cases differ unless `force`, `partial`, or `only` names functions that match.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `crate` | string | yes | Folder of the generated crate (holds rust-anything.json). |
+| `only` | string[] |  | Switch on only these exported functions. |
+| `partial` | boolean |  | Switch on only the functions whose recorded cases all match; leave the rest in the original. |
 | `force` | boolean |  | Switch it on even when recorded cases differ. |
 
 ## Switch a unit off
@@ -171,6 +174,7 @@ Runs the original's code or commands.
 | `out` | string |  | Output folder; defaults to `<crate>/report`. |
 | `min_ms` | integer |  | Minimum measured time per function and side, in milliseconds (default 200). |
 | `node_args` | string[] |  | Extra arguments for node, e.g. ["--import=tsx"]. |
+| `resolve_from` | string |  | Resolve npm packages the original imports from this folder's node_modules. |
 
 ## Benchmark port
 
@@ -191,7 +195,7 @@ Runs the original's code or commands.
 
 Tool `fuzz` · CLI `rust-anything fuzz`
 
-Live differential test: generate fresh inputs from a new seed (the record generator, without the cases already recorded), run them through the original and the built port, and report mismatches the recording missed. Returns the seed to replay, counts and the first mismatches; `keep` appends mismatching (or all) fresh cases to cases.jsonl so the next diff and gate check them. Works wherever record and diff do on this machine (TS/JS, Python, C, Go, Ruby, Java, Kotlin).
+Live differential test: generate fresh inputs from a new seed (the record generator, without the cases already recorded), run them through the original and the built port, and report mismatches the recording missed. Returns the seed to replay, counts and the first mismatches; `keep` appends mismatching (or all) fresh cases to cases.jsonl so the next diff and gate check them. Works wherever record and diff do on this machine (TS/JS, Python, C, Go, Ruby, Java, Kotlin, PHP, C#, PowerShell).
 
 Runs the original's code or commands.
 
@@ -282,8 +286,8 @@ Runs the original's code or commands.
 | `port` | integer |  | A port the server always listens on (implies http). |
 | `effects` | string[] |  | Record what leaves the process: "http" (a local sink set as HTTP_PROXY, http_proxy and RUST_ANYTHING_HTTP_SINK), "smtp" (a local mail server, SMTP_HOST and SMTP_PORT, recording decoded headers and MIME parts) and "smtp-raw" (raw MIME DATA). Each case stores what reached them, in order, and replay compares it. |
 | `effect_env` | string[] |  | Point the app's own settings at a sink: VAR=http-url, VAR=smtp-host, VAR=smtp-port or VAR=smtp-url. |
-| `db_reset` | string |  | Shell command that resets the database before each case (each start for servers); cases then run one at a time. |
-| `db_dump` | string |  | Shell command that prints the database's state (e.g. `sqlite3 app.db .dump`), run after each case or request and recorded with the effects. |
+| `db_reset` | string |  | Shell command that resets the database before each case (each start for servers), run in the folder the case runs in; a script it names by a relative path with a script extension (.py, .sh, .js, .ts, .rb, .php, .pl, .ps1, .bat, .cmd, .sql and similar) is the repository's, while other relative paths, extensionless scripts included, are the case folder's. Cases then run one at a time. |
+| `db_dump` | string |  | Shell command that prints the database's state (e.g. `sqlite3 app.db .dump`), run after each case or request in the folder the case runs in, and recorded with the effects. |
 | `args` | string[] |  | Servers: arguments every start gets after its command, the original's and every build's (["db.json"]). Implies http; saved. |
 | `fresh` | string[] |  | Repository files or folders the app reads or writes (a project tree, a database file), snapshotted and copied into a fresh working directory before every case (CLIs) or start (servers); a CLI's removed files are compared too. Saved. |
 | `pace` | integer |  | Servers: milliseconds to wait after each response, for work the server does after answering (a file watcher). Implies http; saved and used by replay; 0 removes it. |

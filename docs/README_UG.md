@@ -4,11 +4,13 @@
 
 <h1 align="center">rust-anything</h1>
 
-<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · ئۇيغۇرچە · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a></sub></p>
+<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · ئۇيغۇرچە · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a> · <a href="README_AR.md">العربية</a> · <a href="README_FA.md">فارسی</a> · <a href="README_HI.md">हिन्दी</a></sub></p>
 <p align="center"><sub>بۇ تەرجىمىنى جامائەت ئاسرايدۇ، شۇڭا ئۇ <a href="../README.md">ئىنگلىزچە README</a> دىن ئارقىدا قېلىشى مۇمكىن.</sub></p>
 
 <p align="center"><b>ئەپىڭىزنى Rust دا قايتا يېزىڭ، ھەمدە ئۇنىڭ يەنىلا ئوخشاش ئىشلەيدىغانلىقىنى ئىسپاتلاڭ.</b><br>
 ئۇ كودنى ئۆزى تەرجىمە قىلمايدۇ: Rust نى كود يېزىش ۋاكالەتچىڭىز (ياكى سىز) يازىدۇ، rust-anything ئۇنى ئەسلى نۇسخا بىلەن سېلىشتۇرۇپ تەكشۈرىدۇ.</p>
+
+<p align="center"><b>قوللانما:</b> <a href="https://rust-anything.com/ug">https://rust-anything.com/ug</a></p>
 
 <p align="center">
   <img src="https://img.shields.io/github/languages/top/erkamyaman/rust-anything?logo=rust&label=Rust&color=CE422B" alt="Rust share of the code">
@@ -23,7 +25,7 @@
   <a href="https://github.com/erkamyaman/rust-anything"><img src="https://img.shields.io/github/stars/erkamyaman/rust-anything?style=social" alt="GitHub stars"></a>
 </p>
 
-<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a></p>
+<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a> <a href="https://discord.gg/FXhUEA8eBR"><img src="https://img.shields.io/badge/Join%20the%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Discord"></a></p>
 
 <p align="center"><a href="https://trendshift.io/repositories/363468" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/363468/daily?language=Rust" alt="erkamyaman/rust-anything: #1 Rust repository of the day on Trendshift" width="250" height="55"/></a></p>
 
@@ -248,10 +250,12 @@ rust-anything كودنى تەرجىمە قىلمايدۇ: Rust كودىنى سى
 | Go | بوغچا | تىپلىق cgo چاقىرىقلىرى ۋە ھاسىل قىلىنغان ئىككىلىك wire فورماتى، ئەسلى API لىق بوغچىدا | ھاسىل قىلىنغان Go قوزغاتقۇچىسى، ئايرىم مودۇل سۈپىتىدە قۇرۇلىدۇ |
 | Ruby | مودۇل فۇنكسىيەلىرى بار ھۆججەت ياكى قىسقۇچ | ئەسلى مودۇللار ئاستىدىكى magnus كېڭەيتمىسى | ھاسىل قىلىنغان Ruby قوزغاتقۇچىسى |
 | Java | `public static` مېتودلىرى بوغچىسى | تىپلىق JNI ۋە ھاسىل قىلىنغان ئىككىلىك wire فورماتى، ئەسلى مېتودلىق wrapper كلاسلىرىدا | ھاسىل قىلىنغان reflection قوزغاتقۇچىسى |
-| PHP | فۇنكسىيەلەر ۋە `public static` مېتودلىرى قىسقۇچى | كېيىنكى قەدەم: C ABI ئۈستىدە PHP FFI | بۈگۈندىلا پۈتۈن ئەپلەر: `app record`، `app replay` ۋە front door، CLI ۋە مۇلازىمېتىرلار ئۈچۈن (`php -S`) |
-| C# | `public static` مېتودلىرى قىسقۇچى | كېيىنكى قەدەم: C ABI ئۈستىدە P/Invoke | بۈگۈندىلا پۈتۈن ئەپلەر: `app record`، `app replay` ۋە front door، CLI ۋە ASP.NET مۇلازىمېتىرلىرى ئۈچۈن (`dotnet <app>.dll`) |
+| Kotlin | يۇقىرى قاتلام فۇنكسىيەلىرى ۋە `@JvmStatic` مېتودلىرى بار Gradle مودۇلى | Java bridge: تەرجىمە قىلىنغان Kotlin static لىرىنى چاقىرىدىغان Java wrapper كلاسلىرىدا تىپلىق JNI | ھاسىل قىلىنغان reflection قوزغاتقۇچىسى، Kotlin مەنبە ھۆججەتلىرى `kotlinc` بىلەن تەرجىمە قىلىنىدۇ |
+| PHP | يۇقىرى قاتلام فۇنكسىيەلىرى بار ھۆججەت ياكى قىسقۇچ (`public static` مېتودلىرى PHP دا قالىدۇ) | `ext-ffi` ئۈستىدە JSON تارقاتقۇچ، فۇنكسىيەلەرنى ئەسلى پارامېتىرلىرى بىلەن قايتا ئېلان قىلىدىغان ھۆججەتتە | ھاسىل قىلىنغان PHP قوزغاتقۇچىسى؛ پۈتۈن ئەپلەر: `app record`، `app replay` ۋە front door، CLI ۋە مۇلازىمېتىرلار ئۈچۈن (`php -S`) |
+| PowerShell | `param()` بۆلىكى بار فۇنكسىيەلەردىن تەركىب تاپقان `.psm1` مودۇلى ياكى `.ps1` سكرىپتى (`Export-ModuleMember` بويىچە چىقىرىلغانلىرى) | P/Invoke ئۈستىدە JSON تارقاتقۇچ، يۈكلىنىش ۋاقتىدا Reflection.Emit بىلەن ئېلان قىلىنىدۇ، ھەر بىر فۇنكسىيەنى ئەسلى `param()` بۆلىكى بىلەن قايتا ئېلان قىلىدىغان `.ps1` ھۆججىتىدە | ھاسىل قىلىنغان `pwsh` قوزغاتقۇچىسى (PowerShell 7.4+) |
+| C# | `public static` مېتودلىرى بار ھۆججەت ياكى قىسقۇچ | P/Invoke ئۈستىدە JSON تارقاتقۇچ، ئەسلى مېتودلىق `<namespace>.Rust` كلاسلىرىدا | ھاسىل قىلىنغان reflection قوزغاتقۇچىسى، تۈرنىڭ مەنبە ھۆججەتلىرى بىلەن بىللە `dotnet build` ئارقىلىق تەرجىمە قىلىنىدۇ؛ پۈتۈن ئەپلەر: `app record`، `app replay` ۋە front door، CLI ۋە ASP.NET مۇلازىمېتىرلىرى ئۈچۈن (`dotnet <app>.dll`) |
 
-C دىن باشقا ھەر بىر تىل batch كلاسلىرىغىمۇ (`--batch`) ئېرىشىدۇ: ئېلېمېنتلار بىر قېتىم ئۆتۈپ
+C، PHP، C# ۋە PowerShell دىن باشقا ھەر بىر تىل batch كلاسلىرىغىمۇ (`--batch`) ئېرىشىدۇ: ئېلېمېنتلار بىر قېتىم ئۆتۈپ
 Rust تا قالىدۇ، ھەر بىر چاقىرىق ئۇلارنىڭ ھەممىسىنى بارلىق يادرولاردا بىر تەرەپ قىلىدۇ.
 
 تىل ئامباردىن (repository) بايقىلىدۇ (`go.mod`، `pom.xml`، `.csproj` ياكى `.sln`،
@@ -300,7 +304,7 @@ C# مۇ ئوخشاشلا ئىشلەيدۇ: `analyze` `.csproj` تۈرلىرى ۋ
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="ھامىيلار: Santosh Yadav، Hakan Soytürk، Ali Yilmaz، Ashley Hunter، Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="ھامىيلار: Santosh Yadav، Hakan Soytürk، Ali Yilmaz، Ashley Hunter، Fatih Uzuntaş، bugrcvi">
     </picture>
   </a>
 </p>

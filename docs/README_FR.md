@@ -4,11 +4,13 @@
 
 <h1 align="center">rust-anything</h1>
 
-<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · Français · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a></sub></p>
+<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · Français · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a> · <a href="README_AR.md">العربية</a> · <a href="README_FA.md">فارسی</a> · <a href="README_HI.md">हिन्दी</a></sub></p>
 <p align="center"><sub>Cette traduction est maintenue par la communauté et peut être en retard sur le <a href="../README.md">README anglais</a>.</sub></p>
 
 <p align="center"><b>Réécrivez votre application en Rust, et prouvez qu'elle se comporte toujours de la même façon.</b><br>
 Il ne traduit pas le code : votre agent de code (ou vous) écrit le Rust, et rust-anything le vérifie face à l'original.</p>
+
+<p align="center"><b>Documentation:</b> <a href="https://rust-anything.com/fr">https://rust-anything.com/fr</a></p>
 
 <p align="center">
   <img src="https://img.shields.io/github/languages/top/erkamyaman/rust-anything?logo=rust&label=Rust&color=CE422B" alt="Rust share of the code">
@@ -23,7 +25,7 @@ Il ne traduit pas le code : votre agent de code (ou vous) écrit le Rust, et rus
   <a href="https://github.com/erkamyaman/rust-anything"><img src="https://img.shields.io/github/stars/erkamyaman/rust-anything?style=social" alt="GitHub stars"></a>
 </p>
 
-<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a></p>
+<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a> <a href="https://discord.gg/FXhUEA8eBR"><img src="https://img.shields.io/badge/Join%20the%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Discord"></a></p>
 
 <p align="center"><a href="https://trendshift.io/repositories/363468" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/363468/daily?language=Rust" alt="erkamyaman/rust-anything: #1 Rust repository of the day on Trendshift" width="250" height="55"/></a></p>
 
@@ -228,18 +230,21 @@ Une sortie identique ne suffit pas. Enregistrez aussi ce que l'application envoi
 | Go | paquet | appels cgo typés et protocole binaire généré, dans un paquet conservant l'API d'origine | un pilote Go généré, compilé comme son propre module |
 | Ruby | fichier ou dossier de fonctions de module | une extension magnus sous les modules d'origine | un pilote Ruby généré |
 | Java | paquet de méthodes `public static` | JNI typé et protocole binaire généré, dans des classes enveloppes conservant les méthodes d'origine | un pilote par réflexion généré |
-| PHP | fichier ou dossier de fonctions de premier niveau (les méthodes `public static` restent en PHP) | un répartiteur JSON sur `ext-ffi`, dans un fichier qui redéclare les fonctions avec les paramètres d'origine | applications complètes dès aujourd'hui : `app record`, `app replay` et la porte d'entrée, pour les CLI et les serveurs (`php -S`) |
-| C# | fichier ou dossier de méthodes `public static` | un répartiteur JSON sur P/Invoke, dans des classes `<namespace>.Rust` avec les méthodes d'origine | applications complètes dès aujourd'hui : `app record`, `app replay` et la porte d'entrée, pour les CLI et les serveurs ASP.NET (`dotnet <app>.dll`) |
+| Kotlin | module Gradle de fonctions de premier niveau et de méthodes `@JvmStatic` | le pont Java : JNI typé dans des classes enveloppes Java qui appellent les méthodes statiques Kotlin compilées | un pilote par réflexion généré, avec les sources Kotlin compilées par `kotlinc` |
+| PHP | fichier ou dossier de fonctions de premier niveau (les méthodes `public static` restent en PHP) | un répartiteur JSON sur `ext-ffi`, dans un fichier qui redéclare les fonctions avec les paramètres d'origine | un pilote PHP généré ; applications complètes avec `app record`, `app replay` et la porte d'entrée, pour les CLI et les serveurs (`php -S`) |
+| PowerShell | module `.psm1` ou script `.ps1` de fonctions avec des blocs `param()` (exportées selon `Export-ModuleMember`) | un répartiteur JSON sur P/Invoke, déclaré au chargement avec Reflection.Emit, dans un `.ps1` qui redéclare chaque fonction avec son bloc `param()` d'origine | un pilote `pwsh` généré (PowerShell 7.4+) |
+| C# | fichier ou dossier de méthodes `public static` | un répartiteur JSON sur P/Invoke, dans des classes `<namespace>.Rust` avec les méthodes d'origine | un pilote par réflexion généré, compilé avec les sources du projet par `dotnet build` ; applications complètes avec `app record`, `app replay` et la porte d'entrée, pour les CLI et les serveurs ASP.NET (`dotnet <app>.dll`) |
 
-Chaque langage sauf C, PHP et C# obtient également des classes de traitement par lots (`--batch`) : les éléments
+Chaque langage sauf C, PHP, C# et PowerShell obtient également des classes de traitement par lots (`--batch`) : les éléments
 traversent la frontière une seule fois et restent en Rust, et chaque appel s'exécute sur l'ensemble des
 éléments sur tous les cœurs.
 
-Le langage est détecté à partir du dépôt (`go.mod`, `pom.xml`, un `.csproj` ou `.sln`, `pyproject.toml`,
-`Gemfile`, `composer.json`, `package.json`, sinon les fichiers sources les plus courants) ; `--lang`
-permet de le forcer. Les types proviennent des sources : types TS, annotations Python, signatures C, Go,
-Java et C#, balises Ruby YARD, types PHP et phpdoc ; les paramètres non typés utilisés comme des nombres
-sont inférés comme nombres.
+Le langage est détecté à partir du dépôt (`go.mod`, `pom.xml`, `build.gradle`/`build.gradle.kts`, un `.csproj`
+ou `.sln`, `pyproject.toml`, `Gemfile`, `composer.json`, `package.json`, sinon les fichiers sources les plus
+courants) ; un module Gradle avec des sources `.kt` et sans source `.java` est du Kotlin, les modules mixtes
+restent en Java. `--lang` permet de le forcer. Les types proviennent des sources : types TS, annotations
+Python, signatures C, Go, Java, Kotlin et C#, balises Ruby YARD, types PHP et phpdoc ; les paramètres non
+typés utilisés comme des nombres sont inférés comme nombres.
 
 Pour PHP, `analyze` planifie une application PHP (paquets Composer et chargement automatique
 PSR-4, risques tels que la comparaison souple et le débordement d'entiers en flottants, paquets Composer
@@ -291,7 +296,7 @@ petites méthodes plus lentes que .NET ; il n'y a pas encore de `shadow` pour C#
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Sponsors : Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Sponsors : Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş, bugrcvi">
     </picture>
   </a>
 </p>

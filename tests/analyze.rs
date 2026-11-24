@@ -82,6 +82,38 @@ fn finds_risks_with_locations() {
 }
 
 #[test]
+fn risk_samples_are_distinct_lines() {
+    let root = std::env::temp_dir().join(format!("ra-distinct-samples-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(
+        root.join("src/f.ts"),
+        "export function f(s: string): string {\n\
+         \x20 return s.slice(1) + s.slice(2) + s.substring(3)\n\
+         }\n\
+         export function g(s: string): number {\n\
+         \x20 return s.indexOf(\"x\")\n\
+         }\n",
+    )
+    .unwrap();
+    let report = analyze(&root).unwrap();
+    std::fs::remove_dir_all(&root).unwrap();
+    let f = report
+        .units
+        .iter()
+        .find(|u| u.id.ends_with("f.ts"))
+        .unwrap();
+    let offsets = f
+        .risks
+        .iter()
+        .find(|r| r.risk == Risk::StringOffsets)
+        .unwrap();
+    // Three hits on line 2 must not use up every sample slot and hide line 5.
+    assert_eq!(offsets.count, 4);
+    assert_eq!(offsets.samples, ["src/f.ts:2", "src/f.ts:5"]);
+}
+
+#[test]
 fn picks_status_and_bridge() {
     let report = mini();
     let fs = unit(&report, "packages/a/src/fs.ts");
@@ -186,6 +218,47 @@ fn a_c_unit_depends_on_what_its_own_header_includes() {
     let a = unit(&report, "src/a.c");
     assert_eq!(a.internal_deps, ["src/b.c"], "{:?}", a.internal_deps);
     assert!(a.wave > unit(&report, "src/b.c").wave);
+}
+
+#[test]
+fn a_language_the_folder_lacks_is_an_error_not_an_empty_plan() {
+    use rust_anything::analyze::analyze_lang;
+    use rust_anything::lang::Lang;
+    let mini = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mini");
+    let err = analyze_lang(&mini, Lang::Python).unwrap_err().to_string();
+    assert!(err.contains("no Python source files"), "{err}");
+    assert!(err.contains("TypeScript/JavaScript"), "{err}");
+    assert!(analyze_lang(&mini, Lang::Ts).is_ok());
+
+    // A folder that is empty in its own detected language still gets its (empty) plan.
+    let empty = std::env::temp_dir().join(format!("ra-lang-empty-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&empty);
+    std::fs::create_dir_all(&empty).unwrap();
+    let plan = analyze(&empty);
+    std::fs::remove_dir_all(&empty).unwrap();
+    assert_eq!(plan.unwrap().summary.source_files, 0);
+
+    let root = std::env::temp_dir().join(format!("ra-lang-cases-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let write = |path: &str, text: &str| {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    // UI files are the language too: a Go module whose TypeScript is only a React frontend.
+    write("go.mod", "module example.com/app\n\ngo 1.22\n");
+    write("web/App.tsx", "export function App() { return <div />; }\n");
+    assert_eq!(Lang::detect(&root), Lang::Go);
+    let frontend = analyze_lang(&root, Lang::Ts);
+    // Python files hidden by ignore rules: the error keeps analyze's reason for the empty plan.
+    write(".ignore", "py/\n");
+    write("py/tool.py", "def tool():\n    return 1\n");
+    let hidden = analyze_lang(&root, Lang::Python);
+    std::fs::remove_dir_all(&root).unwrap();
+    assert_eq!(frontend.unwrap().summary.ui_files, 1);
+    let err = hidden.unwrap_err().to_string();
+    assert!(err.contains("no Python source files"), "{err}");
+    assert!(err.contains("excluded by ignore rules"), "{err}");
 }
 
 #[test]
@@ -893,6 +966,25 @@ fn map_names_a_path_that_does_not_exist() {
     assert!(!out.status.success());
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("/no/such/rust-anything-path"), "{err}");
+}
+
+#[test]
+fn map_refuses_write_and_json_together() {
+    let root = std::env::temp_dir().join(format!("ra-map-write-json-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_rust-anything"))
+        .args(["map", "--write", "--json"])
+        .arg(&root)
+        .output()
+        .unwrap();
+    let wrote = root.join("rust/PORT_MAP.md").exists();
+    std::fs::remove_dir_all(&root).unwrap();
+    // `--json` used to win silently: exit 0, JSON printed, nothing written.
+    assert!(!out.status.success());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("cannot be used with"), "{err}");
+    assert!(!wrote);
 }
 
 #[test]

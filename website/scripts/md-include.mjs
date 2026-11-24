@@ -200,9 +200,10 @@ export function mdIncludePlugin() {
       const loc = /\/pages\/([a-z]{2}(?:-[a-z]{2})?)\//.exec(id.replace(/\\/g, '/'))?.[1]
       let out = markCodeFilenames(transformTabs(expandIncludes(code)))
       if (loc && loc !== 'en') {
+        const translated = (rest) => existsSync(join(WEBSITE_ROOT, 'pages', loc, 'docs', `${rest.split('#')[0]}.md`))
         out = out
-          .replace(/\]\(\/docs\//g, `](/${loc}/docs/`)
-          .replace(/href="\/docs\//g, `href="/${loc}/docs/`)
+          .replace(/\]\(\/docs\/([^)\s]*)/g, (m, rest) => (translated(rest) ? `](/${loc}/docs/${rest}` : m))
+          .replace(/href="\/docs\/([^"]*)/g, (m, rest) => (translated(rest) ? `href="/${loc}/docs/${rest}` : m))
       }
       return out === code ? undefined : { code: out, map: null }
     },

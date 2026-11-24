@@ -4,11 +4,13 @@
 
 <h1 align="center">rust-anything</h1>
 
-<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · 日本語 · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a></sub></p>
+<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · 日本語 · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a> · <a href="README_AR.md">العربية</a> · <a href="README_FA.md">فارسی</a> · <a href="README_HI.md">हिन्दी</a></sub></p>
 <p align="center"><sub>この翻訳はコミュニティによって管理されており、<a href="../README.md">英語版 README</a> より古い場合があります。</sub></p>
 
 <p align="center"><b>アプリを Rust で書き直し、元と同じように動くことを証明する。</b><br>
 コードを自動翻訳するツールではありません。Rust はコーディングエージェント（またはあなた）が書き、rust-anything が元のプログラムと照合して検証します。</p>
+
+<p align="center"><b>ドキュメント:</b> <a href="https://rust-anything.com/ja">https://rust-anything.com/ja</a></p>
 
 <p align="center">
   <img src="https://img.shields.io/github/languages/top/erkamyaman/rust-anything?logo=rust&label=Rust&color=CE422B" alt="Rust share of the code">
@@ -23,7 +25,7 @@
   <a href="https://github.com/erkamyaman/rust-anything"><img src="https://img.shields.io/github/stars/erkamyaman/rust-anything?style=social" alt="GitHub stars"></a>
 </p>
 
-<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a></p>
+<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a> <a href="https://discord.gg/FXhUEA8eBR"><img src="https://img.shields.io/badge/Join%20the%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Discord"></a></p>
 
 <p align="center"><a href="https://trendshift.io/repositories/363468" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/363468/daily?language=Rust" alt="erkamyaman/rust-anything: #1 Rust repository of the day on Trendshift" width="250" height="55"/></a></p>
 
@@ -190,10 +192,12 @@ rust-anything 自体はコードを自動翻訳しません。Rust コードを�
 | Go | パッケージ | 型付き cgo 呼び出しと自動生成バイナリワイヤ、元の API を持つパッケージとして提供 | 独立したモジュールとしてビルドされる自動生成 Go ドライバ |
 | Ruby | モジュール関数を含むファイルまたはフォルダ | 元のモジュール配下に配置される magnus 拡張 | 自動生成 Ruby ドライバ |
 | Java | `public static` メソッドのパッケージ | 型付き JNI と自動生成バイナリワイヤ、元のメソッドを持つラッパークラスとして提供 | 自動生成リフレクションドライバ |
-| PHP | 関数および `public static` メソッドのフォルダ | 近日対応予定: C ABI 越しの PHP FFI | 現時点でアプリ全体に対応: CLI およびサーバー（`php -S`）向けの `app record`、`app replay`、フロントドア |
-| C# | `public static` メソッドのフォルダ | 近日対応予定: C ABI 越しの P/Invoke | 現時点でアプリ全体に対応: CLI および ASP.NET サーバー（`dotnet <app>.dll`）向けの `app record`、`app replay`、フロントドア |
+| Kotlin | トップレベル関数と `@JvmStatic` メソッドを含む Gradle モジュール | Java ブリッジ: コンパイル済みの Kotlin static を呼び出す Java ラッパークラス内の型付き JNI | 自動生成リフレクションドライバ（Kotlin ソースは `kotlinc` でコンパイル） |
+| PHP | トップレベル関数のファイルまたはフォルダ（`public static` メソッドは PHP 側に残る） | `ext-ffi` 越しの JSON ディスパッチャ、元の引数で関数を再宣言するファイルとして提供 | 自動生成 PHP ドライバ。アプリ全体は CLI およびサーバー（`php -S`）向けの `app record`、`app replay`、フロントドアで対応 |
+| PowerShell | `param()` ブロックを持つ関数の `.psm1` モジュールまたは `.ps1` スクリプト（`Export-ModuleMember` に従ってエクスポート） | P/Invoke 越しの JSON ディスパッチャ、ロード時に Reflection.Emit で宣言され、各関数を元の `param()` ブロックで再宣言する `.ps1` として提供 | 自動生成 `pwsh` ドライバ（PowerShell 7.4 以降） |
+| C# | `public static` メソッドのファイルまたはフォルダ | P/Invoke 越しの JSON ディスパッチャ、元のメソッドを持つ `<namespace>.Rust` クラスとして提供 | 自動生成リフレクションドライバ、プロジェクトのソースとともに `dotnet build` でコンパイル。アプリ全体は CLI および ASP.NET サーバー（`dotnet <app>.dll`）向けの `app record`、`app replay`、フロントドアで対応 |
 
-C 言語を除くすべての言語でバッチクラス（`--batch`）も生成されます。要素は一度だけ境界を越えて Rust 側に保持され、呼び出しのたびに全コアを使って全要素を一括処理します。
+C、PHP、C#、PowerShell を除くすべての言語でバッチクラス（`--batch`）も生成されます。要素は一度だけ境界を越えて Rust 側に保持され、呼び出しのたびに全コアを使って全要素を一括処理します。
 
 言語はリポジトリから自動検出されます（`go.mod`、`pom.xml`、`.csproj` または `.sln`、`pyproject.toml`、`Gemfile`、`composer.json`、`package.json`、該当しない場合は最も多いソースファイルから判断）。`--lang` で上書きもできます。型情報はソースから取得します: TS の型、Python の型ヒント、C/Go/Java/C# のシグネチャ、Ruby の YARD タグ、PHP の型および phpdoc。型注釈がなく数値として使われている引数は数値型と推論されます。
 
@@ -230,7 +234,7 @@ C# も同じように動作します: `analyze` は `.csproj` プロジェクト
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="スポンサー: Santosh Yadav、Hakan Soytürk、Ali Yilmaz、Ashley Hunter、Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="スポンサー: Santosh Yadav、Hakan Soytürk、Ali Yilmaz、Ashley Hunter、Fatih Uzuntaş、bugrcvi">
     </picture>
   </a>
 </p>

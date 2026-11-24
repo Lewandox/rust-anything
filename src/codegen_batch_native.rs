@@ -613,7 +613,7 @@ pub fn go_wrapper(m: &Manifest, api: &PortApi) -> Result<String, String> {
         let fail = |zero: &str| {
             if g.fallible {
                 format!(
-                    "\tif status == 1 {{\n\t\treturn {zero}, errors.New(rustAnythingErr(errp))\n\t}}\n"
+                    "\tif status == 1 {{\n\t\treturn {zero}, rustAnythingToErr(rustAnythingErr(errp))\n\t}}\n"
                 )
             } else {
                 "\tif status == 1 {\n\t\tpanic(rustAnythingErr(errp))\n\t}\n".to_string()

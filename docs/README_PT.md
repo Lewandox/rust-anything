@@ -4,11 +4,13 @@
 
 <h1 align="center">rust-anything</h1>
 
-<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · Português · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a></sub></p>
+<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · Português · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a> · <a href="README_AR.md">العربية</a> · <a href="README_FA.md">فارسی</a> · <a href="README_HI.md">हिन्दी</a></sub></p>
 <p align="center"><sub>Esta tradução é mantida pela comunidade e pode estar desatualizada em relação ao <a href="../README.md">README em inglês</a>.</sub></p>
 
 <p align="center"><b>Reescreva a sua aplicação em Rust e prove que continua a comportar-se da mesma forma.</b><br>
 Não traduz código: o seu agente de programação (ou você) escreve o Rust, e o rust-anything verifica-o contra o original.</p>
+
+<p align="center"><b>Documentação:</b> <a href="https://rust-anything.com/pt">https://rust-anything.com/pt</a></p>
 
 <p align="center">
   <img src="https://img.shields.io/github/languages/top/erkamyaman/rust-anything?logo=rust&label=Rust&color=CE422B" alt="Rust share of the code">
@@ -23,7 +25,7 @@ Não traduz código: o seu agente de programação (ou você) escreve o Rust, e 
   <a href="https://github.com/erkamyaman/rust-anything"><img src="https://img.shields.io/github/stars/erkamyaman/rust-anything?style=social" alt="GitHub stars"></a>
 </p>
 
-<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a></p>
+<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a> <a href="https://discord.gg/FXhUEA8eBR"><img src="https://img.shields.io/badge/Join%20the%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Discord"></a></p>
 
 <p align="center"><a href="https://trendshift.io/repositories/363468" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/363468/daily?language=Rust" alt="erkamyaman/rust-anything: #1 Rust repository of the day on Trendshift" width="250" height="55"/></a></p>
 
@@ -194,12 +196,14 @@ A mesma saída não basta. Registe também o que a aplicação envia, e uma rees
 | Go | Pacote | Chamadas cgo tipadas e um protocolo binário gerado, num pacote com a API original | Um driver Go gerado, compilado como módulo independente |
 | Ruby | Ficheiro ou pasta de funções de módulo | Uma extensão magnus nos módulos originais | Um driver Ruby gerado |
 | Java | Pacote de métodos `public static` | JNI tipado e um protocolo binário gerado, em classes wrapper com os métodos originais | Um driver de reflexão gerado |
+| Kotlin | Módulo Gradle de funções de topo e métodos `@JvmStatic` | A ponte Java: JNI tipado em classes wrapper Java que chamam os métodos estáticos Kotlin compilados | Um driver de reflexão gerado, com o código Kotlin compilado por `kotlinc` |
 | PHP | Ficheiro ou pasta de funções de topo (os métodos `public static` ficam em PHP) | Um despachante JSON sobre `ext-ffi`, num ficheiro que redeclara as funções com os parâmetros originais | Um condutor PHP gerado; aplicações completas com `app record`, `app replay` e a front door, para CLIs e servidores (`php -S`) |
+| PowerShell | Módulo `.psm1` ou script `.ps1` de funções com blocos `param()` (exportadas segundo `Export-ModuleMember`) | Um despachante JSON sobre P/Invoke, declarado no carregamento com Reflection.Emit, num `.ps1` que redeclara cada função com o seu bloco `param()` original | Um condutor `pwsh` gerado (PowerShell 7.4+) |
 | C# | Ficheiro ou pasta de métodos `public static` | Um despachante JSON sobre P/Invoke, em classes `<namespace>.Rust` com os métodos originais | Um condutor de reflexão gerado, compilado com o código do projeto por `dotnet build`; aplicações completas com `app record`, `app replay` e a front door, para CLIs e servidores ASP.NET (`dotnet <app>.dll`) |
 
-Todas as linguagens, exceto C, PHP e C#, também recebem classes de processamento em lote (`--batch`): os elementos atravessam a ponte uma única vez e permanecem em Rust, e cada chamada processa todos eles em todos os núcleos.
+Todas as linguagens, exceto C, PHP, C# e PowerShell, também recebem classes de processamento em lote (`--batch`): os elementos atravessam a ponte uma única vez e permanecem em Rust, e cada chamada processa todos eles em todos os núcleos.
 
-A linguagem é detetada a partir do repositório (`go.mod`, `pom.xml`, um `.csproj` ou `.sln`, `pyproject.toml`, `Gemfile`, `composer.json`, `package.json` ou, caso contrário, os ficheiros de código-fonte mais comuns). A opção `--lang` permite substituir essa deteção. Os tipos são obtidos a partir do código-fonte: tipos de TS, anotações de Python, assinaturas de C, Go, Java e C#, tags YARD de Ruby, tipos PHP e phpdoc. Parâmetros sem tipo que são utilizados como números são inferidos como números.
+A linguagem é detetada a partir do repositório (`go.mod`, `pom.xml`, `build.gradle`/`build.gradle.kts`, um `.csproj` ou `.sln`, `pyproject.toml`, `Gemfile`, `composer.json`, `package.json` ou, caso contrário, os ficheiros de código-fonte mais comuns); um módulo Gradle com fontes `.kt` e sem fontes `.java` é Kotlin, módulos mistos continuam Java. A opção `--lang` permite substituir essa deteção. Os tipos são obtidos a partir do código-fonte: tipos de TS, anotações de Python, assinaturas de C, Go, Java, Kotlin e C#, tags YARD de Ruby, tipos PHP e phpdoc. Parâmetros sem tipo que são utilizados como números são inferidos como números.
 
 Para PHP, `analyze` planeia uma aplicação PHP (pacotes Composer e carregamento automático PSR-4, riscos como comparações flexíveis e overflow de inteiros para floats, pacotes Composer associados a crates), e uma CLI ou servidor PHP pode ser registado, reproduzido e colocado atrás de uma front door em Rust. As funções de topo de uma unidade, com parâmetros escalares, de texto, de lista e de array associativo, passam pela extensão FFI do PHP (`php` com `ext-ffi`, ativa por omissão na CLI): quando `diff` passar, carregue o `php/<crate>.php` gerado — o nome é o do crate com `-` escrito como `_`, pelo que `foo-rs` dá `php/foo_rs.php` — onde a aplicação carregava o original, e deixe os dois ficheiros no sítio: o invólucro carrega a biblioteca nativa relativamente à sua própria pasta. O invólucro declara cada função migrada sem qualquer guarda `function_exists`, por isso substitui o ficheiro original em vez de se lhe juntar. O resto do que esse ficheiro contém não vem com ele: classes, métodos `public static`, funções que a ponte mantém em PHP (um parâmetro `callable` ou `Closure`, por exemplo) e instruções de topo como `define('FEATURE_ENABLED', true)` não estão no invólucro, e carregar os dois ficheiros redeclara as funções migradas. Mantenha essas declarações num ficheiro que continue a ser carregado.
 Cada chamada atravessa a fronteira como JSON, cerca de 1 µs, por isso `bench` mostra funções pequenas mais lentas do que em PHP; ainda não há `shadow` para PHP ([issue #200](https://github.com/erkamyaman/rust-anything/issues/200)).
@@ -235,7 +239,7 @@ O C# funciona da mesma forma: `analyze` lê projetos `.csproj` e os respetivos p
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Patrocinadores: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Patrocinadores: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş, bugrcvi">
     </picture>
   </a>
 </p>

@@ -137,6 +137,13 @@ enum Cmd {
         /// below 1), e.g. 1e-9 for numeric code. Saved with the crate for diff and gate; 0 removes it.
         #[arg(long)]
         float_tolerance: Option<f64>,
+        /// Compare objects regardless of key order, now and in every later `diff`, `gate`, `enable`
+        /// and `report`. `--no-ignore-key-order` saves the opposite.
+        #[arg(long, overrides_with = "no_ignore_key_order")]
+        ignore_key_order: bool,
+        /// Save "keep the original's key order", undoing an earlier `--ignore-key-order`.
+        #[arg(long, overrides_with = "ignore_key_order")]
+        no_ignore_key_order: bool,
         /// Also record every call the original's own test suite makes to the unit's functions:
         /// `--from-tests -- npx jest` (TS/JS, any runner) or `-- pytest` (Python).
         #[arg(long)]
@@ -314,6 +321,12 @@ enum Cmd {
         /// Crate folder made by `bridge`.
         #[arg(default_value = ".", value_parser = absolute)]
         crate_dir: PathBuf,
+        /// Switch on only these exported functions (repeatable).
+        #[arg(long = "only")]
+        only: Vec<String>,
+        /// Switch on only the functions whose recorded cases all match; leave the rest in the original.
+        #[arg(long, conflicts_with_all = ["only", "force"])]
+        partial: bool,
         /// Switch it on even when recorded cases differ.
         #[arg(long)]
         force: bool,
@@ -348,6 +361,9 @@ enum Cmd {
         /// Extra arguments for node, e.g. `--node-arg=--import=tsx`.
         #[arg(long = "node-arg", allow_hyphen_values = true)]
         node_args: Vec<String>,
+        /// Resolve npm packages the original imports from this folder's `node_modules`.
+        #[arg(long, value_parser = absolute)]
+        resolve_from: Option<PathBuf>,
     },
     /// Remove the build cache every port and bridge shares (CARGO_TARGET_DIR when set, else
     /// rust-anything/target in your cache folder). Ports rebuild on their next build.
@@ -367,7 +383,11 @@ enum Cmd {
         /// Crate folder made by `bridge`.
         #[arg(default_value = ".", value_parser = absolute)]
         crate_dir: PathBuf,
-        /// Where to write the module; defaults to `<crate>/shadow/<name>.shadow.ts`.
+        /// Where to write the module. The default depends on the language:
+        /// `<crate>/shadow/<name>.shadow.ts` (TypeScript), `<crate>/shadow/<name>_shadow.py`
+        /// (Python), `<crate>/shadow/<name>_shadow.c` (C), `<crate>/go/shadow/<pkg>.go` (Go),
+        /// `<crate>/ruby/<lib>_shadow.rb` (Ruby), and a folder, `<crate>/java/`, for Java and
+        /// Kotlin. PHP, C# and PowerShell have no shadow module yet and stop with an error.
         #[arg(long, short)]
         out: Option<PathBuf>,
     },
@@ -454,7 +474,7 @@ enum Cmd {
         #[arg(long = "crates")]
         crates: Vec<PathBuf>,
         /// Write the map to rust/PORT_MAP.md in the repository instead of printing it.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "json")]
         write: bool,
         /// Exit 1 when the original changed since any port was recorded.
         #[arg(long)]
@@ -544,11 +564,14 @@ enum AppCmd {
         #[arg(long, value_name = "VAR=KIND")]
         effect_env: Vec<String>,
         /// A shell command run before each case (CLIs) or each start (servers) that resets the
-        /// database to a known state. Cases then run one at a time.
+        /// database to a known state. Cases then run one at a time. It runs in the folder the
+        /// case runs in; a script it names by a relative path with a script extension (`reset.py`,
+        /// `seed.sh`, `schema.sql`) is the repository's, other relative paths the case folder's.
         #[arg(long, value_name = "COMMAND")]
         db_reset: Option<String>,
         /// A shell command that prints the database's state (e.g. `sqlite3 app.db .dump`), run
-        /// after each case or request; its output is recorded with the effects.
+        /// after each case or request in the folder the case runs in; its output is recorded
+        /// with the effects.
         #[arg(long, value_name = "COMMAND")]
         db_dump: Option<String>,
         /// Print the machine-readable report as JSON.
@@ -768,6 +791,8 @@ fn run() -> Result<ExitCode> {
             resolve_from,
             node_args,
             float_tolerance,
+            ignore_key_order,
+            no_ignore_key_order,
             from_tests,
             test_command,
             profile,
@@ -807,6 +832,11 @@ fn run() -> Result<ExitCode> {
             if let Some(t) = float_tolerance {
                 let mut manifest = bridge::Manifest::load(&crate_dir)?;
                 manifest.float_tolerance = (rust_anything::tolerance::check(t)? > 0.0).then_some(t);
+                manifest.save(&crate_dir)?;
+            }
+            if ignore_key_order || no_ignore_key_order {
+                let mut manifest = bridge::Manifest::load(&crate_dir)?;
+                manifest.ignore_key_order = ignore_key_order;
                 manifest.save(&crate_dir)?;
             }
             if (pin_clock || no_pin_clock)
@@ -1196,27 +1226,41 @@ fn run() -> Result<ExitCode> {
         }
         Cmd::Enable {
             crate_dir,
+            only,
+            partial,
             force,
             json,
         } => {
-            if !force {
+            let diff_opts = harness::DiffOptions {
+                crate_dir: &crate_dir,
+                module: None,
+                ignore_key_order: false,
+                node_args: &[],
+                float_tolerance: None,
+            };
+            let on = if partial || (!only.is_empty() && !force) {
                 harness::build(&crate_dir)?;
-                let d = harness::diff(&harness::DiffOptions {
-                    crate_dir: &crate_dir,
-                    module: None,
-                    ignore_key_order: false,
-                    node_args: &[],
-                    float_tolerance: None,
-                })?;
-                if d.failed > 0 || !d.missing.is_empty() {
-                    anyhow::bail!(
-                        "{}/{} recorded cases match; switch it on once they all do (`rust-anything diff` shows them), or pass --force",
-                        d.passed,
-                        d.total
-                    );
+                let (d, counts) = harness::diff_full_with_counts(&diff_opts)?;
+                let manifest = bridge::Manifest::load(&crate_dir)?;
+                let (selected, skipped) =
+                    rust_anything::enable::select_matching(&manifest, &d, &counts, &only)?;
+                rust_anything::enable::enable_only(&crate_dir, Some(&selected), &skipped)?
+            } else if !only.is_empty() {
+                rust_anything::enable::enable_only(&crate_dir, Some(&only), &[])?
+            } else {
+                if !force {
+                    harness::build(&crate_dir)?;
+                    let d = harness::diff(&diff_opts)?;
+                    if d.failed > 0 || !d.missing.is_empty() {
+                        anyhow::bail!(
+                            "{}/{} recorded cases match; switch it on once they all do (`rust-anything diff` shows them), or pass --partial / --only / --force",
+                            d.passed,
+                            d.total
+                        );
+                    }
                 }
-            }
-            let on = rust_anything::enable::enable(&crate_dir)?;
+                rust_anything::enable::enable(&crate_dir)?
+            };
             if json {
                 say!("{}", serde_json::to_string_pretty(&on)?);
             } else {
@@ -1269,12 +1313,14 @@ fn run() -> Result<ExitCode> {
             min_ms,
             json,
             node_args,
+            resolve_from,
         } => {
             let card = rust_anything::card::report(&rust_anything::card::Options {
                 crate_dir: &crate_dir,
                 out: out.as_deref(),
                 min_ms,
                 node_args: &node_args,
+                resolve_from: resolve_from.as_deref(),
             })?;
             if json {
                 say!("{}", serde_json::to_string_pretty(&card)?);
@@ -1579,6 +1625,18 @@ fn run_app(command: AppCmd) -> Result<ExitCode> {
             }
             if !outcome.timed_out.is_empty() {
                 say!("Timed out, not recorded: {}", outcome.timed_out.join(", "));
+            }
+            if !outcome.stale.is_empty() {
+                say!(
+                    "Removed, recorded before but not now: {}",
+                    outcome.stale.join(", ")
+                );
+            }
+            if !outcome.kept.is_empty() {
+                say!(
+                    "Kept, not from a recording (written by hand, or recorded before rust-anything listed its cases; delete them if they no longer apply): {}",
+                    outcome.kept.join(", ")
+                );
             }
         }
         AppCmd::Replay {

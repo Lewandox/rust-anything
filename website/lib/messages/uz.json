@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Butun ilovangizni Rust'da qismma-qism qayta yozing",
-    "description": "Ilovangizni Rust'da qismma-qism qayta yozing, har qadamda asl nusxa bilan tekshirib. TypeScript/JavaScript, Python, C, Go, Ruby, Java, PHP va C# tilidagi CLI'lar, serverlar va kutubxonalar."
+    "description": "Ilovangizni Rust'da qismma-qism qayta yozing, har qadamda asl nusxa bilan tekshirib. TypeScript/JavaScript, Python, C, Go, Ruby, Java, Kotlin, PHP, PowerShell va C# tilidagi CLI'lar, serverlar va kutubxonalar."
   },
   "ui": {
     "docs": "Hujjatlar",
@@ -130,9 +130,9 @@
         "k": "toza Rust binary'sida mos kelgan json-server HTTP holatlari"
       },
       {
-        "v": "8",
+        "v": "10",
         "unit": "",
-        "k": "til: oltitasida tekshirilgan birlik portlari, PHP va C# butun ilovalar uchun"
+        "k": "languages: eight with verified ports, Kotlin and PowerShell tested end to end"
       }
     ],
     "installTitle": "O'rnatish",
@@ -258,7 +258,7 @@
     "benchPostRow": "POST /comments, 10 ulanish",
     "benchNote": "Farq kichik bo'lgan joylar: bitta ulanish 10,000 postdan iborat butun ro'yxatni o'qiganda (1.2x) va katta bazaga yozishda (1.1 dan 1.2x gacha), chunki ikkalasi ham har bir yozuvda butun faylni qayta yozadi. [To'liq jadvallar](/docs/real-world/json-server)",
     "langsTitle": "Tillar",
-    "langsDesc": "Til repozitoriydan aniqlanadi. C'dan tashqari har bir til batch'larni ham oladi: elementlar ko'prikdan bir marta o'tadi va Rust'da, barcha yadrolarda qoladi.",
+    "langsDesc": "Til repozitoriydan aniqlanadi. C, PHP, C# va PowerShell'dan tashqari har bir til batch'larni ham oladi: elementlar ko'prikdan bir marta o'tadi va Rust'da, barcha yadrolarda qoladi.",
     "verified": "Tekshirilgan",
     "wholeApps": "Butun ilovalar",
     "langMeta": {
@@ -267,9 +267,7 @@
       "c": "extern \"C\". glibc fasadi: 1,859/1,859",
       "go": "cgo va binary wire. Go path: 2,642/2,642",
       "ruby": "magnus. shellwords: 1,617/1,617",
-      "java": "JNI va binary wire. JDK fasadi: 4,492/4,492",
-      "php": "butun ilovani yozib olish va qayta ijro etish; birlik ko'priklari navbatda",
-      "csharp": "butun ilovani yozib olish va qayta ijro etish; birlik ko'priklari navbatda"
+      "java": "JNI va binary wire. JDK fasadi: 4,492/4,492"
     },
     "sponsorsTitle": "Homiylar",
     "sponsorsDesc": "rust-anything bepul va ochiq manbali. Agar u ishingizga yordam bersa, iltimos, unga homiylik qilishni o'ylab ko'ring. Qo'llab-quvvatlashingiz ishlab chiqishni davom ettirishga yordam beradi.",

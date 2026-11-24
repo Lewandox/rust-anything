@@ -4,11 +4,13 @@
 
 <h1 align="center">rust-anything</h1>
 
-<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · Tiếng Việt · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a></sub></p>
+<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · <a href="README_RU.md">Русский</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · Tiếng Việt · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a> · <a href="README_AR.md">العربية</a> · <a href="README_FA.md">فارسی</a> · <a href="README_HI.md">हिन्दी</a></sub></p>
 <p align="center"><sub>Bản dịch này do cộng đồng duy trì và có thể chậm hơn <a href="../README.md">README tiếng Anh</a>.</sub></p>
 
 <p align="center"><b>Viết lại ứng dụng bằng Rust, và chứng minh nó vẫn hoạt động y như cũ.</b><br>
 Công cụ không tự dịch code: agent lập trình của bạn (hoặc chính bạn) viết Rust, còn rust-anything kiểm tra nó với bản gốc.</p>
+
+<p align="center"><b>Tài liệu:</b> <a href="https://rust-anything.com/">https://rust-anything.com/</a></p>
 
 <p align="center">
   <img src="https://img.shields.io/github/languages/top/erkamyaman/rust-anything?logo=rust&label=Rust&color=CE422B" alt="Rust share of the code">
@@ -23,7 +25,7 @@ Công cụ không tự dịch code: agent lập trình của bạn (hoặc chín
   <a href="https://github.com/erkamyaman/rust-anything"><img src="https://img.shields.io/github/stars/erkamyaman/rust-anything?style=social" alt="GitHub stars"></a>
 </p>
 
-<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a></p>
+<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a> <a href="https://discord.gg/FXhUEA8eBR"><img src="https://img.shields.io/badge/Join%20the%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Discord"></a></p>
 
 <p align="center"><a href="https://trendshift.io/repositories/363468" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/363468/daily?language=Rust" alt="erkamyaman/rust-anything: #1 Rust repository of the day on Trendshift" width="250" height="55"/></a></p>
 
@@ -39,7 +41,7 @@ Làm tại Thổ Nhĩ Kỳ 🇹🇷 bởi <a href="https://github.com/erkamyaman
   <sub>Prettier so với bản port Rust trên 59 file thực tế lấy từ ms, Fuse.js và json-server (Apple M4). Đầu ra giống nhau đến từng byte. <a href="real-world.md#prettier">Cách đo</a>.</sub>
 </p>
 
-<p align="center"><sub>PHP và C#: hiện hỗ trợ ghi, phát lại và front door; port từng đơn vị sẽ có tiếp theo.</sub></p>
+<p align="center"><sub>PHP và C#: port từng đơn vị qua FFI và P/Invoke.</sub></p>
 
 <table>
   <tr>
@@ -192,16 +194,18 @@ rust-anything không tự dịch code: bạn hoặc coding agent (Claude Code, C
 | Go | package | lời gọi cgo có kiểu rõ ràng, dùng wire nhị phân do công cụ tạo; nằm trong package giữ nguyên API | Go driver do công cụ tạo, build thành module riêng |
 | Ruby | tệp hoặc thư mục chứa các module có function | extension magnus nằm trong các module gốc | Ruby driver do công cụ tạo |
 | Java | package chứa các hàm `public static` | JNI có kiểu rõ ràng, dùng wire nhị phân do công cụ tạo; wrapper class giữ nguyên method gốc | reflection driver do công cụ tạo |
-| PHP | thư mục chứa function và method `public static` | sắp tới: PHP FFI dựa trên C ABI | có thể chạy với cả ứng dụng ngay hôm nay: `app record`, `app replay` và front door cho CLI lẫn server (`php -S`) |
-| C# | thư mục chứa các method `public static` | sắp tới: P/Invoke dựa trên C ABI | có thể chạy với cả ứng dụng ngay hôm nay: `app record`, `app replay` và front door cho CLI lẫn server ASP.NET (`dotnet <app>.dll`) |
+| Kotlin | Gradle module chứa các function cấp cao nhất và method `@JvmStatic` | cầu nối của Java: JNI có kiểu rõ ràng trong các wrapper class Java gọi tới các hàm static Kotlin đã biên dịch | reflection driver do công cụ tạo, source Kotlin được biên dịch bằng `kotlinc` |
+| PHP | tệp hoặc thư mục chứa các function cấp cao nhất (method `public static` vẫn ở lại PHP) | JSON dispatcher qua `ext-ffi`, nằm trong một tệp khai báo lại các function với tham số gốc | PHP driver do công cụ tạo; cả ứng dụng với `app record`, `app replay` và front door cho CLI lẫn server (`php -S`) |
+| PowerShell | module `.psm1` hoặc script `.ps1` chứa các function có khối `param()` (export theo `Export-ModuleMember`) | JSON dispatcher qua P/Invoke, khai báo lúc nạp bằng Reflection.Emit, nằm trong một tệp `.ps1` khai báo lại từng function với khối `param()` gốc | `pwsh` driver do công cụ tạo (PowerShell 7.4+) |
+| C# | tệp hoặc thư mục chứa các method `public static` | JSON dispatcher qua P/Invoke, nằm trong các class `<namespace>.Rust` giữ nguyên method gốc | reflection driver do công cụ tạo, biên dịch cùng source của project bằng `dotnet build`; cả ứng dụng với `app record`, `app replay` và front door cho CLI lẫn server ASP.NET (`dotnet <app>.dll`) |
 
-Mọi ngôn ngữ trừ C đều có thêm batch class (`--batch`): dữ liệu chỉ qua cầu nối một lần rồi nằm trong Rust, mỗi lần gọi sẽ xử lý cả lô trên mọi core.
+Mọi ngôn ngữ trừ C, PHP, C# và PowerShell đều có thêm batch class (`--batch`): dữ liệu chỉ qua cầu nối một lần rồi nằm trong Rust, mỗi lần gọi sẽ xử lý cả lô trên mọi core.
 
 Công cụ nhận diện ngôn ngữ qua repo dựa trên các file như `go.mod`, `pom.xml`, `.csproj`, `.sln`, `pyproject.toml`, `Gemfile`, `composer.json`, `package.json` hoặc phần mở rộng xuất hiện nhiều nhất. Muốn chỉ định ngôn ngữ, dùng `--lang`. Kiểu dữ liệu được đọc từ source: type của TypeScript, type hint của Python, chữ ký hàm của C, Go, Java và C#, YARD tag của Ruby, type và phpdoc của PHP. Tham số không khai báo kiểu nhưng được dùng như số sẽ được suy luận là kiểu số.
 
-Với PHP, `analyze` lập kế hoạch chuyển app PHP, gồm package Composer và PSR-4 autoloading, các rủi ro như so sánh lỏng lẻo hay tràn số nguyên thành float, và ánh xạ package Composer sang crate. Hiện có thể ghi lại, replay và đặt Rust front door trước CLI hoặc server PHP. Bước tiếp theo là chuyển từng unit sang Rust qua PHP FFI ([issue #2](https://github.com/erkamyaman/rust-anything/issues/2)).
+Với PHP, `analyze` lập kế hoạch chuyển app PHP, gồm package Composer và PSR-4 autoloading, các rủi ro như so sánh lỏng lẻo hay tràn số nguyên thành float, và ánh xạ package Composer sang crate. Hiện có thể ghi lại, replay và đặt Rust front door trước CLI hoặc server PHP. Các function cấp cao nhất của một unit, với tham số kiểu scalar, string, list và mảng kết hợp, được nối qua extension FFI của PHP (`php` có `ext-ffi`, bật sẵn cho CLI): khi `diff` đã pass, hãy require file `php/<crate>.php` được tạo ra (tên crate với `-` đổi thành `_`, nên `foo-rs` thành `php/foo_rs.php`) ở chỗ app đang require file gốc, và để cả hai file ở nguyên chỗ, vì wrapper nạp native library theo đường dẫn tương đối với thư mục của nó, nên dời nó đi sẽ làm hỏng việc nạp. Wrapper khai báo từng function được nối một cách vô điều kiện, không có guard `function_exists`, nên nó thay thế file gốc chứ không dùng chung với file đó. Những gì khác trong file gốc không đi theo: class, method `public static`, các function mà cầu nối giữ lại trong PHP (ví dụ có tham số `callable` hay `Closure`) và các câu lệnh cấp cao nhất như `define('FEATURE_ENABLED', true)` đều không có trong wrapper, và require cả hai file sẽ khai báo lại các function đã nối. Hãy để những phần đó trong một file vẫn được require. Mỗi lời gọi đi qua cầu nối dưới dạng JSON, mất khoảng 1 µs, nên `bench` sẽ cho thấy các function nhỏ chậm hơn PHP; PHP chưa có `shadow` ([issue #200](https://github.com/erkamyaman/rust-anything/issues/200)).
 
-C# cũng hoạt động theo cách tương tự. `analyze` đọc project `.csproj` và package NuGet, ánh xạ package sang crate, phân giải `using` thành thư mục rồi cảnh báo về các điểm riêng của C# như `decimal`, `dynamic`, deferred query của LINQ, `Task`, `lock` và reflection. Hiện có thể ghi lại, replay và đặt Rust front door trước CLI C# hoặc server ASP.NET. Tiếp theo là chuyển các unit qua P/Invoke.
+C# cũng hoạt động theo cách tương tự. `analyze` đọc project `.csproj` và package NuGet, ánh xạ package sang crate, phân giải `using` thành thư mục rồi cảnh báo về các điểm riêng của C# như `decimal`, `dynamic`, deferred query của LINQ, `Task`, `lock` và reflection. Hiện có thể ghi lại, replay và đặt Rust front door trước CLI C# hoặc server ASP.NET. Các method public static của một unit, với tham số kiểu scalar, string, array, list, dictionary và record hoặc class thường, được nối qua P/Invoke (cần `dotnet` trong PATH để ghi và so sánh): khi `diff` đã pass, hãy biên dịch wrapper `cs/` được tạo ra (một file đặt theo tên crate: `foo-rs` thành `cs/FooRs.cs`) vào project, đặt native library đã build cạnh app, rồi gọi các class được tạo trong namespace `<namespace>.Rust` (`Acme.Text.Slug.Slugify` thành `Acme.Text.Rust.Slug.Slugify`), hoặc đặt alias cho chúng bằng `using`. Mỗi lời gọi đi qua cầu nối dưới dạng JSON, mất khoảng 1-3 µs, nên `bench` sẽ cho thấy các method nhỏ chậm hơn .NET; C# chưa có `shadow` ([issue #200](https://github.com/erkamyaman/rust-anything/issues/200)).
 
 <h2 id="learn-more">Đọc thêm</h2>
 
@@ -232,7 +236,7 @@ C# cũng hoạt động theo cách tương tự. `analyze` đọc project `.cspr
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Nhà tài trợ: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Nhà tài trợ: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş, bugrcvi">
     </picture>
   </a>
 </p>

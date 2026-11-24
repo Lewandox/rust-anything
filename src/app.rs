@@ -111,6 +111,10 @@ pub struct Config {
     /// before every case; a path ending in `/` gives its contents.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fresh: Vec<String>,
+    /// The cases the last `app record` wrote, so the next one can remove those it no longer
+    /// writes without touching cases written by hand.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recorded: Vec<String>,
 }
 
 pub(crate) fn default_timeout() -> u64 {
@@ -412,6 +416,15 @@ fn run_in(
         }
         std::fs::write(&target, bytes)?;
     }
+    // The database lives where the case runs, so reset it there, before taking the snapshot that
+    // tells the case's own writes apart.
+    let sinks = effects
+        .map(|config| -> Result<_> {
+            let sinks = crate::effects::Sinks::start(config)?;
+            sinks.reset(&work, repo)?;
+            Ok(sinks)
+        })
+        .transpose()?;
     let before: BTreeMap<PathBuf, FileStamp> = walk_files(&work)
         .into_iter()
         .filter_map(|path| {
@@ -442,13 +455,6 @@ fn run_in(
     for key in &case.env_remove {
         cmd.env_remove(key);
     }
-    let sinks = effects
-        .map(|config| -> Result<_> {
-            let sinks = crate::effects::Sinks::start(config)?;
-            sinks.reset(repo)?;
-            Ok(sinks)
-        })
-        .transpose()?;
     if let Some(sinks) = &sinks {
         cmd.envs(sinks.env());
     }
@@ -550,7 +556,7 @@ fn run_in(
         .cloned()
         .collect();
     let fallback = std::fs::metadata(&log).ok().map(|m| m.len() > 0);
-    let effects = sinks.map(|s| redact(s.take(repo)));
+    let effects = sinks.map(|s| redact(s.take(&work, repo)));
     Ok(Run {
         stdout: redact(stdout),
         stderr: redact(stderr),
@@ -1248,10 +1254,13 @@ pub(crate) fn scan_examples<T>(repo: &Path, parse: impl Fn(&str, &Path) -> Optio
         };
         let doc_dir = path.parent().unwrap_or(repo);
         let mut fence: Option<String> = None;
+        // A command wrapped with trailing backslashes, joined so far.
+        let mut pending = String::new();
         for raw in text.lines() {
             let line = raw.trim();
-            if markdown {
+            let candidate = if markdown {
                 if line.starts_with("```") || line.starts_with("~~~") {
+                    pending.clear();
                     fence = match fence {
                         Some(_) => None,
                         None => Some(
@@ -1265,23 +1274,69 @@ pub(crate) fn scan_examples<T>(repo: &Path, parse: impl Fn(&str, &Path) -> Optio
                     continue;
                 }
                 let Some(lang) = &fence else { continue };
-                let candidate = match line.strip_prefix("$ ") {
-                    Some(rest) => rest,
-                    None if matches!(lang.as_str(), "sh" | "bash" | "shell" | "zsh") => line,
-                    None => continue,
-                };
-                if let Some(case) = parse(candidate, doc_dir) {
-                    out.push(case);
+                // Continuation lines carry no `$ ` prompt, and keep their indentation: it is what
+                // separates them from the previous word, as the shell adds no space when joining.
+                if !pending.is_empty() {
+                    raw
+                } else {
+                    let start = raw.trim_start();
+                    match start.strip_prefix("$ ") {
+                        Some(rest) => rest,
+                        None if matches!(lang.as_str(), "sh" | "bash" | "shell" | "zsh") => start,
+                        None => continue,
+                    }
                 }
+            } else if !pending.is_empty() {
+                raw
             } else {
-                let candidate = line.strip_prefix("$ ").unwrap_or(line);
-                if let Some(case) = parse(candidate, doc_dir) {
-                    out.push(case);
-                }
+                let start = raw.trim_start();
+                start.strip_prefix("$ ").unwrap_or(start)
+            };
+            // The line's end is untrimmed, so `\ ` (an escaped space) does not continue.
+            if !ends_in_comment(candidate)
+                && let Some(head) = continued(candidate)
+            {
+                pending.push_str(head);
+                continue;
+            }
+            pending.push_str(candidate);
+            let command = std::mem::take(&mut pending);
+            if let Some(case) = parse(&command, doc_dir) {
+                out.push(case);
             }
         }
     }
     out
+}
+
+/// Whether a shell line ends inside a comment: an unquoted `#` that starts a word. A `\` at the
+/// end of a comment is part of the comment, not a continuation.
+fn ends_in_comment(line: &str) -> bool {
+    let (mut single, mut double, mut escaped, mut word_start) = (false, false, false, true);
+    for c in line.chars() {
+        if escaped {
+            escaped = false;
+            word_start = false;
+            continue;
+        }
+        match c {
+            '\\' if !single => escaped = true,
+            '\'' if !double => single = !single,
+            '"' if !single => double = !double,
+            '#' if word_start && !single && !double => return true,
+            _ => {}
+        }
+        word_start = c.is_whitespace() && !single && !double;
+    }
+    false
+}
+
+/// The line without its trailing `\` when the shell would join it with the next line. An even
+/// number of trailing backslashes ends in a literal one (`C:\\`), not a continuation.
+fn continued(line: &str) -> Option<&str> {
+    let head = line.strip_suffix('\\')?;
+    let escaped = (head.len() - head.trim_end_matches('\\').len()) % 2 == 1;
+    (!escaped).then_some(head)
 }
 
 fn read_inputs(path: &Path) -> Result<Vec<(Option<String>, Case)>> {
@@ -1442,6 +1497,110 @@ pub struct RecordOutcome {
     pub unstable: Vec<String>,
     /// Cases not written: the original timed out or did not answer.
     pub timed_out: Vec<String>,
+    /// The cases this recording wrote.
+    pub recorded: Vec<String>,
+    /// Cases the last recording in this folder wrote and this one did not (a timeout included):
+    /// removed, apart from files a case that stays reads (`fs.base`).
+    pub stale: Vec<String>,
+    /// Cases in the folder that no recording wrote (by hand, or before the list was kept):
+    /// left in place.
+    pub kept: Vec<String>,
+}
+
+/// What each case's files are called after its name.
+const CASE_FILES: [&str; 9] = [
+    "toml",
+    "stdin",
+    "stdout",
+    "stderr",
+    REMOVED_EXT,
+    crate::effects::EXT,
+    "body",
+    "in",
+    "out",
+];
+
+/// Removes the cases the last recording in this folder wrote (`previous`) that this one did not
+/// write, and names the cases in the folder that did not come from a recording, which it keeps.
+/// Only `previous` marks a case as a recording's: a case written by hand stays even when an input
+/// of its name timed out now. Files a case that stays reads through `fs.base` (that folder, or one
+/// inside it) stay too.
+pub(crate) fn drop_stale(outcome: &mut RecordOutcome, previous: &[String]) -> Result<()> {
+    let written: BTreeSet<&str> = outcome.recorded.iter().map(String::as_str).collect();
+    let ours: BTreeSet<&str> = previous
+        .iter()
+        .map(String::as_str)
+        .filter(|name| !written.contains(name))
+        .collect();
+    let read = bases_read(&outcome.dir, &ours);
+    let mut stale = Vec::new();
+    for name in &ours {
+        if outcome.dir.join(format!("{name}.toml")).is_file() {
+            stale.push((*name).to_string());
+        }
+        for ext in CASE_FILES {
+            let path = outcome.dir.join(format!("{name}.{ext}"));
+            // A folder a case that stays reads, holds one it reads, or is on the way to it as
+            // written: `two.in/sub`, `../app-cases/two.in/sub` (resolved) and `two.in/../shared`
+            // (on Unix only found while `two.in` exists) all keep `two.in`.
+            let resolved = path.canonicalize().ok();
+            if read.iter().any(|base| {
+                base.starts_with(&path) || resolved.as_ref().is_some_and(|r| base.starts_with(r))
+            }) {
+                continue;
+            }
+            if path.is_dir() {
+                std::fs::remove_dir_all(&path)
+                    .with_context(|| format!("removing {}", path.display()))?;
+            } else if path.is_file() {
+                std::fs::remove_file(&path)
+                    .with_context(|| format!("removing {}", path.display()))?;
+            }
+        }
+    }
+    let mut kept: Vec<String> = std::fs::read_dir(&outcome.dir)?
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            name.strip_suffix(".toml").map(str::to_string)
+        })
+        .filter(|name| !written.contains(name.as_str()))
+        .collect();
+    kept.sort();
+    outcome.stale = stale;
+    outcome.kept = kept;
+    Ok(())
+}
+
+/// The `fs.base` folders that the cases in `dir` other than `going` read, each as written (joined
+/// to `dir`) and, when it exists, resolved.
+fn bases_read(dir: &Path, going: &BTreeSet<&str>) -> BTreeSet<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return BTreeSet::new();
+    };
+    entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension().is_some_and(|e| e == "toml")
+                && path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|stem| !going.contains(stem))
+        })
+        .filter_map(|path| std::fs::read_to_string(path).ok())
+        .filter_map(|text| text.parse::<DocumentMut>().ok())
+        .filter_map(|doc| {
+            doc.get("fs")
+                .and_then(|f| f.get("base"))
+                .and_then(Item::as_str)
+                .map(|base| dir.join(base))
+        })
+        .flat_map(|base| {
+            let resolved = base.canonicalize().ok();
+            std::iter::once(base).chain(resolved)
+        })
+        .collect()
 }
 
 struct Recorded {
@@ -1676,6 +1835,12 @@ pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
         .canonical()
         .with_context(|| format!("no folder {}", opts.repo.display()))?;
     let existing = Config::load(&repo)?;
+    // The names the last recording wrote, and whether it wrote them to `http/` or to the CLI
+    // folder: they are a recording's only in that folder.
+    let (previous, previous_http) = existing
+        .as_ref()
+        .map(|c| (c.recorded.clone(), c.http.is_some()))
+        .unwrap_or_default();
     let run = if !opts.run.is_empty() {
         opts.run.to_vec()
     } else if let Some(c) = &existing {
@@ -1745,6 +1910,7 @@ pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
             opts.effects.clone(),
         ),
         fresh: Vec::new(),
+        recorded: Vec::new(),
     };
     if let Some(http) = config.http.as_mut() {
         if !opts.fresh.is_empty() {
@@ -1757,8 +1923,10 @@ pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
     }
     let norm = Normalizers::new(&config)?;
     if config.http.is_some() {
-        let outcome = crate::http::record(&repo, &config, &norm, opts)?;
+        let mut outcome = crate::http::record(&repo, &config, &norm, opts)?;
         config.unordered = unordered_of(&outcome.noise);
+        drop_stale(&mut outcome, if previous_http { &previous } else { &[] })?;
+        config.recorded = outcome.recorded.clone();
         std::fs::write(
             cases_dir(&repo).join(CONFIG_FILE),
             serde_json::to_string_pretty(&config)? + "\n",
@@ -1843,6 +2011,9 @@ pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
         noise: Vec::new(),
         unstable: Vec::new(),
         timed_out: Vec::new(),
+        recorded: Vec::new(),
+        stale: Vec::new(),
+        kept: Vec::new(),
     };
     for ((name, case), runs) in planned.iter().zip(runs) {
         let (one, two) = runs?;
@@ -1853,6 +2024,7 @@ pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
         let rec = settle(&norm, case, &one, &two);
         write_case(&dir, &config.name, name, case, &rec)?;
         outcome.cases += 1;
+        outcome.recorded.push(name.clone());
         if !rec.noise.is_empty() {
             outcome.noisy.push(name.clone());
         }
@@ -1868,6 +2040,8 @@ pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
         }
     }
     config.unordered = unordered_of(&outcome.noise);
+    drop_stale(&mut outcome, if previous_http { &[] } else { &previous })?;
+    config.recorded = outcome.recorded.clone();
     std::fs::write(
         dir.join(CONFIG_FILE),
         serde_json::to_string_pretty(&config)? + "\n",
@@ -2411,6 +2585,7 @@ pub fn replay(opts: &ReplayOptions) -> Result<ReplayOutcome> {
         unordered: BTreeMap::new(),
         effects: None,
         fresh: Vec::new(),
+        recorded: Vec::new(),
     });
     let norm = Normalizers::new(&config)?;
     let timeout = Duration::from_secs(opts.timeout_secs.unwrap_or(config.timeout_secs));
@@ -2548,6 +2723,7 @@ mod tests {
             unordered: BTreeMap::new(),
             effects: None,
             fresh: Vec::new(),
+            recorded: Vec::new(),
         })
         .unwrap()
     }
@@ -2721,6 +2897,7 @@ mod tests {
             unordered: BTreeMap::new(),
             effects: None,
             fresh: Vec::new(),
+            recorded: Vec::new(),
         })
         .unwrap();
         let kind = |a: &str, b: &str| settle_text(&norm, a.as_bytes(), b.as_bytes()).1;
@@ -2747,6 +2924,7 @@ mod tests {
             unordered: BTreeMap::from([("c".to_string(), vec!["stdout".to_string()])]),
             effects: None,
             fresh: Vec::new(),
+            recorded: Vec::new(),
         })
         .unwrap();
         assert!(norm.unordered("c", "stdout"));
@@ -2801,6 +2979,7 @@ mod tests {
             unordered: BTreeMap::new(),
             effects: None,
             fresh: Vec::new(),
+            recorded: Vec::new(),
         };
         let norm = Normalizers::new(&config).unwrap();
         assert_eq!(
@@ -2843,6 +3022,42 @@ mod tests {
         assert_eq!(cases[2].env["LANG"], "C");
         assert_eq!(cases[3].stdin.as_deref(), Some(&b"hello\n"[..]));
         std::fs::remove_dir_all(&repo).unwrap();
+    }
+
+    #[test]
+    fn examples_continued_with_a_backslash_are_joined() {
+        let repo = temp_dir("continued-examples").unwrap();
+        std::fs::write(
+            repo.join("README.md"),
+            "```console\n$ tool upper \\\n    --loud \\\n    'x y'\n$ tool path C:\\\\\n$ tool count in.txt\n$ tool upper --mode=lo\\\nud\n$ tool echo a\\ \n$ tool count b.txt\n```\n",
+        )
+        .unwrap();
+        std::fs::write(
+            repo.join("demo.sh"),
+            "tool sort \\\n  --reverse\n# tool hidden \\\ntool count c.txt\n",
+        )
+        .unwrap();
+        let names = vec!["tool".to_string()];
+        let args: Vec<Vec<String>> = find_examples(&repo, &names)
+            .iter()
+            .map(|c| c.args.clone())
+            .collect();
+        std::fs::remove_dir_all(&repo).unwrap();
+        // Not continuations: a doubled backslash (a literal one), a backslash followed by a space,
+        // and a backslash at the end of a comment. Joining adds no space of its own (`--mode=loud`).
+        assert_eq!(
+            args,
+            [
+                vec!["upper", "--loud", "x y"],
+                vec!["path", "C:\\"],
+                vec!["count", "in.txt"],
+                vec!["upper", "--mode=loud"],
+                vec!["echo", "a "],
+                vec!["count", "b.txt"],
+                vec!["sort", "--reverse"],
+                vec!["count", "c.txt"],
+            ]
+        );
     }
 
     #[test]

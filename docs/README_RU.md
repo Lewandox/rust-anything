@@ -4,11 +4,13 @@
 
 <h1 align="center">rust-anything</h1>
 
-<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · Русский · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a></sub></p>
+<p align="center"><sub><a href="../README.md">English</a> · <a href="README_TR.md">Türkçe</a> · <a href="README_UK.md">Українська</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_DE.md">Deutsch</a> · <a href="README_FR.md">Français</a> · Русский · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a> · <a href="README_AZ.md">Azərbaycanca</a> · <a href="README_UZ.md">Oʻzbekcha</a> · <a href="README_KK.md">Қазақша</a> · <a href="README_KY.md">Кыргызча</a> · <a href="README_TK.md">Türkmençe</a> · <a href="README_TT.md">Татарча</a> · <a href="README_UG.md">ئۇيغۇرچە</a> · <a href="README_PT.md">Português</a> · <a href="README_VI.md">Tiếng Việt</a> · <a href="README_ES.md">Español</a> · <a href="README_IT.md">Italiano</a> · <a href="README_ID.md">Bahasa Indonesia</a> · <a href="README_AR.md">العربية</a> · <a href="README_FA.md">فارسی</a> · <a href="README_HI.md">हिन्दी</a></sub></p>
 <p align="center"><sub>Этот перевод поддерживается сообществом и может отставать от <a href="../README.md">английского README</a>.</sub></p>
 
 <p align="center"><b>Перепишите своё приложение на Rust и докажите, что оно ведёт себя так же.</b><br>
 Он не переводит код: Rust пишет ваш агент для программирования (или вы), а rust-anything проверяет его по оригиналу.</p>
+
+<p align="center"><b>Документация:</b> <a href="https://rust-anything.com/ru">https://rust-anything.com/ru</a></p>
 
 <p align="center">
   <img src="https://img.shields.io/github/languages/top/erkamyaman/rust-anything?logo=rust&label=Rust&color=CE422B" alt="Rust share of the code">
@@ -23,7 +25,7 @@
   <a href="https://github.com/erkamyaman/rust-anything"><img src="https://img.shields.io/github/stars/erkamyaman/rust-anything?style=social" alt="GitHub stars"></a>
 </p>
 
-<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a></p>
+<p align="center"><a href="https://github.com/erkamyaman/rust-anything/discussions/127"><img src="https://img.shields.io/badge/Join%20the%20discussion-6E40C9?style=for-the-badge&logo=github&logoColor=white" alt="Join the discussion"></a> <a href="https://discord.gg/FXhUEA8eBR"><img src="https://img.shields.io/badge/Join%20the%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Discord"></a></p>
 
 <p align="center"><a href="https://trendshift.io/repositories/363468" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/363468/daily?language=Rust" alt="erkamyaman/rust-anything: #1 Rust repository of the day on Trendshift" width="250" height="55"/></a></p>
 
@@ -194,7 +196,9 @@ rust-anything не переводит код: код на Rust пишете вы
 | Go | пакет | типизированные вызовы cgo и сгенерированный бинарный протокол в пакете с исходным API | сгенерированный Go-драйвер, собранный как отдельный модуль |
 | Ruby | файл или каталог с функциями модуля | расширение magnus в исходных модулях | сгенерированный Ruby-драйвер |
 | Java | пакет методов `public static` | типизированный JNI и сгенерированный бинарный протокол в классах-обёртках с исходными методами | сгенерированный драйвер на рефлексии |
+| Kotlin | модуль Gradle с функциями верхнего уровня и методами `@JvmStatic` | мост Java: типизированный JNI в Java-классах-обёртках, которые вызывают скомпилированные статические члены Kotlin | сгенерированный драйвер на рефлексии, исходники Kotlin компилируются через `kotlinc` |
 | PHP | файл или каталог функций верхнего уровня (методы `public static` остаются в PHP) | JSON-диспетчер поверх `ext-ffi` в файле, который заново объявляет функции с исходными параметрами | сгенерированный драйвер на PHP; целые приложения через `app record`, `app replay` и входную точку, для CLI и серверов (`php -S`) |
+| PowerShell | модуль `.psm1` или скрипт `.ps1` с функциями, у которых есть блоки `param()` (экспортируемые согласно `Export-ModuleMember`) | JSON-диспетчер поверх P/Invoke, объявляемый при загрузке через Reflection.Emit, в файле `.ps1`, который заново объявляет каждую функцию с её исходным блоком `param()` | сгенерированный драйвер на `pwsh` (PowerShell 7.4+) |
 | C# | файл или каталог методов `public static` | JSON-диспетчер поверх P/Invoke в классах `<namespace>.Rust` с исходными методами | сгенерированный драйвер на рефлексии, собираемый вместе с исходниками проекта через `dotnet build`; целые приложения через `app record`, `app replay` и входную точку, для CLI и серверов ASP.NET (`dotnet <app>.dll`) |
 
 Для каждого языка, кроме C, PHP, C# и PowerShell, также генерируются пакетные классы (`--batch`): элементы пересекают границу один раз и остаются в Rust, а каждый вызов обрабатывает их все на всех ядрах.
@@ -234,7 +238,7 @@ C# работает аналогичным образом: `analyze` читае�
   <a href="https://github.com/sponsors/erkamyaman">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/sponsors-dark.svg">
-      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Спонсоры: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş">
+      <img src="assets/sponsors/sponsors-light.svg" width="800" alt="Спонсоры: Santosh Yadav, Hakan Soytürk, Ali Yilmaz, Ashley Hunter, Fatih Uzuntaş, bugrcvi">
     </picture>
   </a>
 </p>

@@ -18,6 +18,12 @@ apply(resolve(read()));
 mq.addEventListener("change",function(){if(read()==="system")apply(mq.matches)});
 })();`
 
+const EXTERNAL_LINKS = `(function(){
+function mark(a){if(a.host&&a.host!==location.host&&/^https?:$/.test(a.protocol)){a.target="_blank";a.rel="noopener noreferrer"}}
+document.addEventListener("click",function(e){var a=e.target&&e.target.closest&&e.target.closest("a[href]");if(a)mark(a)},true);
+document.addEventListener("DOMContentLoaded",function(){document.querySelectorAll("a[href]").forEach(mark)});
+})();`
+
 const LOCALE_LINKS = (rest: string) =>
   LOCALES.map((l) => `<link rel="alternate" hreflang="${l.lang}" href="${withLocale(rest, l.code)}">`).join('')
 
@@ -42,7 +48,7 @@ export default defineMiddleware(async (c, next) => {
   const path = publicPath(raw)
   c.set('shared', { path })
   c.set('headDefaults', {
-    script: [{ innerHTML: THEME_BOOTSTRAP }],
+    script: [{ innerHTML: THEME_BOOTSTRAP }, { innerHTML: EXTERNAL_LINKS }],
     meta: [
       { property: 'og:image', content: ogImageFor(path) },
       { name: 'twitter:image', content: ogImageFor(path) },

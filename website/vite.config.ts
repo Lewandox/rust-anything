@@ -1,3 +1,5 @@
+import { readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite-plus'
 import { voidPlugin } from 'void'
@@ -15,7 +17,22 @@ import { groupOf } from './lib/nav.ts'
 
 const root = fileURLToPath(new URL('.', import.meta.url)).replace(/\/$/, '')
 
+function docPages(dir: string, base: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const full = join(dir, name)
+    if (statSync(full).isDirectory()) return docPages(full, `${base}/${name}`)
+    return name.endsWith('.md') ? [`${base}/${name.slice(0, -3)}`] : []
+  })
+}
+
+const translatedDocs = readdirSync(join(root, 'pages'))
+  .filter((loc) => loc !== 'en' && statSync(join(root, 'pages', loc, 'docs'), { throwIfNoEntry: false })?.isDirectory())
+  .flatMap((loc) => docPages(join(root, 'pages', loc, 'docs'), `/${loc}/docs`))
+
 export default defineConfig({
+  define: {
+    __TRANSLATED_DOCS__: JSON.stringify(translatedDocs),
+  },
   resolve: {
     alias: [{ find: /^@\//, replacement: `${root}/` }],
   },

@@ -61,6 +61,8 @@ export default function Footer({ locale = 'en' }: { locale?: string }) {
           <a className="hover:text-fg" href={`${REPO_URL}/issues`}>{ui.issues}</a>
           <a className="hover:text-fg" href={L('/docs/project/status')}>{ui.status}</a>
           <a className="hover:text-fg" href="https://github.com/sponsors/erkamyaman">{ui.sponsor}</a>
+          <span />
+          <a className="hover:text-fg" href="https://discord.gg/FXhUEA8eBR">Discord</a>
         </div>
       </div>
     </footer>

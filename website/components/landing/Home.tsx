@@ -84,15 +84,15 @@ const LANGS = [
   { key: 'go', name: 'Go' },
   { key: 'ruby', name: 'Ruby' },
   { key: 'java', name: 'Java' },
-  { key: 'php', name: 'PHP', wholeApp: true },
-  { key: 'csharp', name: 'C#', wholeApp: true },
+  { key: 'php', name: 'PHP' },
+  { key: 'csharp', name: 'C#' },
+  { key: 'kotlin', name: 'Kotlin', tested: true },
+  { key: 'powershell', name: 'PowerShell', tested: true },
 ] as const
 
-const SPONSORS = [
-  { login: 'aliyilmazco', name: 'Ali Yilmaz' },
-  { login: 'ashley-hunter', name: 'Ashley Hunter' },
-  { login: 'fatihuzuntas', name: 'Fatih Uzuntaş' },
-]
+const TRENDSHIFT = ['daily', 'daily?language=Rust', 'weekly', 'weekly?language=Rust']
+
+const CODERABBIT = 'https://coderabbit.link/er-kam'
 
 const BENCH = [
   ['GET /posts', '11.1k / 10.8k', '27.3k / 23.9k', '19.7k / 20.4k', '115.0k / 110.7k'],
@@ -119,7 +119,34 @@ export default function Home({ hero, install, locale = 'en' }: { hero: React.Rea
             </div>
           ))}
         </div>
+        <div className="trend-badges">
+          {TRENDSHIFT.map((b) => (
+            <a key={b} href="https://trendshift.io/repositories/363468">
+              <img src={`https://trendshift.io/api/badge/trendshift/repositories/363468/${b}`} width={250} height={55} alt={`rust-anything on Trendshift (${b})`} loading="lazy" />
+            </a>
+          ))}
+        </div>
+        <p className="sponsored-by">
+          {m.sponsoredBy}{' '}
+          <a href={CODERABBIT}>
+            <img src="/brands/coderabbit.png" width={22} height={22} alt="" /> CodeRabbit
+          </a>
+        </p>
       </div>
+
+      <section className="section" aria-labelledby="prettier-title">
+        <div className="wrap">
+          <div className="section-head">
+            <h2 id="prettier-title" className="section-title">
+              {m.prettierTitle}
+            </h2>
+            <p className="section-desc">{m.prettierDesc}</p>
+          </div>
+          <a href="https://github.com/erkamyaman/rust-anything/blob/main/docs/real-world.md#prettier" className="prettier-demo">
+            <img src="/prettier.gif" width={820} alt={m.prettierAlt} loading="lazy" />
+          </a>
+        </div>
+      </section>
 
       <section className="section" aria-labelledby="install-title">
         <div className="wrap">
@@ -224,7 +251,10 @@ export default function Home({ hero, install, locale = 'en' }: { hero: React.Rea
           <div className="ports">
             {m.ports.map((p) => (
               <a key={p.href} href={L(p.href)} className="port-card">
-                <div className="port-kind">{p.kind}</div>
+                <div className="port-top">
+                  <span className="port-kind">{p.kind}</span>
+                  <span className="badge">{m.verified}</span>
+                </div>
                 <div className="big">{p.big}</div>
                 <p>
                   <Rich text={p.text} />
@@ -238,10 +268,17 @@ export default function Home({ hero, install, locale = 'en' }: { hero: React.Rea
             ))}
           </div>
 
-          <div className="panel bench-panel">
-            <div className="titlebar">
+          <p className="ports-legend">
+            <span className="slow-dot" aria-hidden /> {m.slowLegend}
+          </p>
+
+          <details className="panel bench-panel">
+            <summary className="titlebar">
               <span>{m.benchTitle}</span>
-            </div>
+              <svg className="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </summary>
             <div className="overflow-x-auto">
               <table className="bench">
                 <thead>
@@ -274,7 +311,7 @@ export default function Home({ hero, install, locale = 'en' }: { hero: React.Rea
             <p className="panel-note">
               <Rich text={m.benchNote} locale={locale} />
             </p>
-          </div>
+          </details>
         </div>
       </section>
 
@@ -289,10 +326,13 @@ export default function Home({ hero, install, locale = 'en' }: { hero: React.Rea
           <ul className="langs">
             {LANGS.map((l) => (
               <li key={l.key}>
-                <a href={L(`/docs/languages/${l.key}`)} className="lang">
-                  <span className="name">{l.name}</span>
-                  <span className={`badge${'wholeApp' in l ? ' preview' : ''}`}>{'wholeApp' in l ? m.wholeApps : m.verified}</span>
-                  <span className="meta">{m.langMeta[l.key]}</span>
+                <a href={'tested' in l ? `${REPO_URL}#languages` : L(`/docs/languages/${l.key}`)} className="lang">
+                  <span className="lang-top">
+                    <img src={`/langs/${l.key}.svg`} width={28} height={28} alt="" decoding="async" />
+                    <span className={`badge${'tested' in l ? ' preview' : ''}`}>{'tested' in l ? m.tested : m.verified}</span>
+                  </span>
+                  <span className="name">{l.name.replace('/', '/\u200b')}</span>
+                  <LangMeta text={m.langMeta[l.key]} />
                 </a>
               </li>
             ))}
@@ -309,23 +349,21 @@ export default function Home({ hero, install, locale = 'en' }: { hero: React.Rea
             <p className="section-desc">{m.sponsorsDesc}</p>
           </div>
           <div className="sponsors">
-            <a href="https://coderabbit.ai" className="sponsor-company">
-              <img src="https://github.com/coderabbitai.png?size=120" width={48} height={48} alt="" loading="lazy" />
+            <a href={CODERABBIT} className="sponsor-company">
+              <img src="/brands/coderabbit.png" width={48} height={48} alt="" loading="lazy" />
               <span>
                 <span className="who">CodeRabbit</span>
                 <span className="role">{m.companySponsor}</span>
               </span>
             </a>
-            {SPONSORS.map((p) => (
-              <a key={p.login} href={`https://github.com/${p.login}`} className="sponsor-person">
-                <img src={`https://github.com/${p.login}.png?size=100`} width={40} height={40} alt="" loading="lazy" />
-                {p.name}
-              </a>
-            ))}
             <a className="btn btn-quiet" href="https://github.com/sponsors/erkamyaman">
               {m.becomeSponsor}
             </a>
           </div>
+          <a href="https://github.com/sponsors/erkamyaman" className="sponsor-wall">
+            <img className="only-light" src="/sponsors/sponsors-light.svg" alt={m.sponsorWallAlt} loading="lazy" />
+            <img className="only-dark" src="/sponsors/sponsors-dark.svg" alt={m.sponsorWallAlt} loading="lazy" />
+          </a>
         </div>
       </section>
     </div>
@@ -337,6 +375,21 @@ function Row({ k, v, slow }: { k: string; v: string; slow: boolean }) {
     <>
       <dt className={slow ? 'slow' : undefined}>{k}</dt>
       <dd className={slow ? 'slow' : undefined}>{v}</dd>
+    </>
+  )
+}
+
+function LangMeta({ text }: { text: string }) {
+  const cut = /\.\s|。/.exec(text)
+  const bridge = cut ? text.slice(0, cut.index) : ''
+  const rest = cut ? text.slice(cut.index + cut[0].length).trim() : text
+  const count = /([\d][\d,.\s]*\/\s*[\d][\d,.\s]*)$/.exec(rest)
+  const what = count ? rest.slice(0, count.index).replace(/[:：]\s*$/, '').trim() : rest
+  return (
+    <>
+      {count && <span className="count">{count[1].trim()}</span>}
+      <span className="what">{what}</span>
+      {bridge && <span className="bridge">{bridge}</span>}
     </>
   )
 }

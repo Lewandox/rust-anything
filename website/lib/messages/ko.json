@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "앱 전체를 한 조각씩 Rust로 다시 작성하세요",
-    "description": "앱을 한 조각씩 Rust로 다시 작성하고, 매 단계마다 원본과 대조해 검증합니다. TypeScript/JavaScript, Python, C, Go, Ruby, Java, PHP, C#으로 작성된 CLI, 서버, 라이브러리를 지원합니다."
+    "description": "앱을 한 조각씩 Rust로 다시 작성하고, 매 단계마다 원본과 대조해 검증합니다. TypeScript/JavaScript, Python, C, Go, Ruby, Java, Kotlin, PHP, PowerShell, C#으로 작성된 CLI, 서버, 라이브러리를 지원합니다."
   },
   "ui": {
     "docs": "문서",
@@ -130,9 +130,9 @@
         "k": "순수 Rust 바이너리에서 일치하는 json-server HTTP 케이스"
       },
       {
-        "v": "8",
+        "v": "10",
         "unit": "",
-        "k": "언어: 검증된 유닛 포팅이 있는 6개, 앱 전체용 PHP와 C#"
+        "k": "languages: eight with verified ports, Kotlin and PowerShell tested end to end"
       }
     ],
     "installTitle": "설치",
@@ -258,7 +258,7 @@
     "benchPostRow": "POST /comments, 연결 10개",
     "benchNote": "차이가 작은 경우: 연결 하나로 게시물 10,000개 전체 목록을 읽을 때(1.2x)와 큰 데이터베이스에 쓸 때(1.1 to 1.2x)입니다. 두 경우 모두 쓰기마다 파일 전체를 다시 쓰기 때문입니다. [전체 표](/docs/real-world/json-server)",
     "langsTitle": "언어",
-    "langsDesc": "언어는 저장소에서 자동으로 감지됩니다. C를 제외한 모든 언어는 배치도 지원합니다. 항목이 경계를 한 번만 넘고 Rust 안에 머물며 모든 코어에서 처리됩니다.",
+    "langsDesc": "언어는 저장소에서 자동으로 감지됩니다. C, PHP, C#, PowerShell을 제외한 모든 언어는 배치도 지원합니다. 항목이 경계를 한 번만 넘고 Rust 안에 머물며 모든 코어에서 처리됩니다.",
     "verified": "검증됨",
     "wholeApps": "앱 전체",
     "langMeta": {
@@ -267,9 +267,7 @@
       "c": "extern \"C\". glibc 파사드: 1,859/1,859",
       "go": "cgo와 바이너리 와이어. Go path: 2,642/2,642",
       "ruby": "magnus. shellwords: 1,617/1,617",
-      "java": "JNI와 바이너리 와이어. JDK 파사드: 4,492/4,492",
-      "php": "앱 전체 기록과 재생, 유닛 브리지는 다음 단계",
-      "csharp": "앱 전체 기록과 재생, 유닛 브리지는 다음 단계"
+      "java": "JNI와 바이너리 와이어. JDK 파사드: 4,492/4,492"
     },
     "sponsorsTitle": "후원사",
     "sponsorsDesc": "rust-anything은 무료 오픈 소스입니다. 작업에 도움이 된다면 후원을 고려해 주세요. 여러분의 후원이 개발을 이어 가게 합니다.",
