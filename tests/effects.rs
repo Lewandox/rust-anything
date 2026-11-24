@@ -293,3 +293,132 @@ fn rows_written_differently_fail_replay_through_the_db_dump() {
 
     std::fs::remove_dir_all(&repo).unwrap();
 }
+
+const MAILER_A: &str = r#"import os, smtplib, sys
+from email.message import EmailMessage
+
+name = sys.argv[1] if len(sys.argv) > 1 else "nobody"
+m = EmailMessage()
+m["From"] = "App <app@example.test>"
+m["To"] = f"{name}@example.test"
+m["Subject"] = f"Hello — {name}"
+m.set_content(f"hi {name} from café", cte="quoted-printable")
+m.add_alternative(f"<p>hi {name}</p>", subtype="html", cte="7bit")
+m.add_attachment(b"%PDF-1.4", maintype="application", subtype="pdf", filename="doc.pdf")
+with smtplib.SMTP(os.environ["SMTP_HOST"], int(os.environ["SMTP_PORT"]), local_hostname="localhost") as s:
+    s.send_message(m)
+print("sent", name)
+"#;
+
+const MAILER_B: &str = r#"import base64, os, smtplib, sys
+
+name = sys.argv[1] if len(sys.argv) > 1 else "nobody"
+plain_b64 = base64.b64encode(f"hi {name} from café".encode("utf-8")).decode("ascii")
+subj_b64 = base64.b64encode(f"Hello — {name}".encode("utf-8")).decode("ascii")
+raw = (
+    f"To: {name}@example.test\r\n"
+    f"Subject: =?UTF-8?B?{subj_b64}?=\r\n"
+    "From: App <app@example.test>\r\n"
+    "Message-ID: <lettre-1@rust.local>\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Content-Type: multipart/mixed; boundary=rust_outer\r\n"
+    "\r\n"
+    "--rust_outer\r\n"
+    "Content-Type: multipart/alternative; boundary=rust_alt\r\n"
+    "\r\n"
+    "--rust_alt\r\n"
+    "Content-Type: text/plain; charset=utf-8\r\n"
+    "Content-Transfer-Encoding: base64\r\n"
+    "\r\n"
+    f"{plain_b64}\r\n"
+    "--rust_alt\r\n"
+    "Content-Type: text/html; charset=utf-8\r\n"
+    "Content-Transfer-Encoding: quoted-printable\r\n"
+    "\r\n"
+    f"<p>hi {name}</p>\r\n"
+    "--rust_alt--\r\n"
+    "--rust_outer\r\n"
+    "Content-Type: application/pdf; name=\"doc.pdf\"\r\n"
+    "Content-Disposition: attachment; filename=\"doc.pdf\"\r\n"
+    "Content-Transfer-Encoding: base64\r\n"
+    "\r\n"
+    "JVBERi0xLjQ=\r\n"
+    "--rust_outer--\r\n"
+)
+with smtplib.SMTP(os.environ["SMTP_HOST"], int(os.environ["SMTP_PORT"]), local_hostname="localhost") as s:
+    s.sendmail("app@example.test", [f"{name}@example.test"], raw.encode("utf-8"))
+print("sent", name)
+"#;
+
+#[test]
+fn same_mail_with_different_mime_framing_matches_unless_smtp_raw() {
+    let Some(python) = common::python() else {
+        return;
+    };
+    let repo =
+        std::env::temp_dir().join(format!("rust-anything-effects-mime-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&repo);
+    std::fs::create_dir_all(&repo).unwrap();
+    std::fs::write(repo.join("mailer_a.py"), MAILER_A).unwrap();
+    std::fs::write(repo.join("mailer_b.py"), MAILER_B).unwrap();
+    std::fs::write(
+        repo.join("inputs.jsonl"),
+        "{\"name\": \"alice\", \"args\": [\"alice\"]}\n",
+    )
+    .unwrap();
+
+    // Default `smtp`: parsed parts view — different MIME framing still matches.
+    let effects = EffectsConfig::from_args(&["smtp".into()], &[], None, None).unwrap();
+    let outcome = app::record(&RecordOptions {
+        repo: &repo,
+        run: &[python.to_string(), "mailer_a.py".to_string()],
+        inputs: Some(&repo.join("inputs.jsonl")),
+        normalize: &[],
+        name: Some("mailer"),
+        traps: false,
+        timeout_secs: None,
+        http: false,
+        server_args: &[],
+        fresh: &[],
+        pace_ms: None,
+        port: None,
+        float_tolerance: None,
+        float_files: &[],
+        effects,
+    })
+    .unwrap();
+    assert!(outcome.unstable.is_empty(), "{outcome:?}");
+    let replayed = replay(&repo, &format!("{python} mailer_b.py"));
+    assert_eq!(replayed.passed, replayed.total, "{:?}", replayed.failures);
+
+    // `smtp-raw`: raw MIME bytes — different MIME framing fails on `effects`.
+    let raw_effects = EffectsConfig::from_args(&["smtp-raw".into()], &[], None, None).unwrap();
+    let raw_outcome = app::record(&RecordOptions {
+        repo: &repo,
+        run: &[python.to_string(), "mailer_a.py".to_string()],
+        inputs: Some(&repo.join("inputs.jsonl")),
+        normalize: &[],
+        name: Some("mailer"),
+        traps: false,
+        timeout_secs: None,
+        http: false,
+        server_args: &[],
+        fresh: &[],
+        pace_ms: None,
+        port: None,
+        float_tolerance: None,
+        float_files: &[],
+        effects: raw_effects,
+    })
+    .unwrap();
+    assert!(raw_outcome.unstable.is_empty(), "{raw_outcome:?}");
+    let raw_replayed = replay(&repo, &format!("{python} mailer_b.py"));
+    assert_eq!(raw_replayed.passed, 0, "{raw_replayed:?}");
+    assert_eq!(
+        raw_replayed.failures[0].problems[0].field, "effects",
+        "{:?}",
+        raw_replayed.failures
+    );
+
+    std::fs::remove_dir_all(&repo).unwrap();
+}

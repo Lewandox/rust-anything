@@ -534,8 +534,9 @@ enum AppCmd {
         float_files: Vec<String>,
         /// Record what leaves the process too: `http` runs a local sink that answers every
         /// request (set as HTTP_PROXY, http_proxy and RUST_ANYTHING_HTTP_SINK), `smtp` a local
-        /// mail server (SMTP_HOST, SMTP_PORT). Each case stores what reached them, in order,
-        /// and replay compares it. Comma-separated or repeated. Saved with the cases.
+        /// mail server (SMTP_HOST, SMTP_PORT) recording decoded headers and MIME parts, and
+        /// `smtp-raw` the same server recording the raw MIME DATA. Each case stores what reached
+        /// them, in order, and replay compares it. Comma-separated or repeated. Saved with the cases.
         #[arg(long, value_name = "KINDS")]
         effects: Vec<String>,
         /// Point one of the app's own settings at a sink: VAR=http-url, VAR=smtp-host,

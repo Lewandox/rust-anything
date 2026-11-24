@@ -57,6 +57,7 @@ pub mod library;
 pub mod lift;
 pub mod mcp;
 pub mod mcp_prompts;
+mod mime;
 pub mod package;
 pub mod pin;
 pub mod port_map;
