@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Java and Kotlin parameters accept covariant wildcards and projections (`List<? extends CharSequence>`,
+  `List<out CharSequence>`, `Map<String, ? extends Integer>`, `Array<out String>`) through both the
+  reflection converter and the binary wire; return positions, `? super T` and `in T` stay refused (#367).
 - `app record --effects smtp` records each email as its decoded `From`, `To`, `Cc` and `Subject`
   and its MIME parts (attachments as name, type, size and SHA-256), so the same mail sent with
   different MIME framing matches. `--effects smtp-raw` keeps the raw DATA, and cases recorded
