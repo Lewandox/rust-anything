@@ -53,30 +53,55 @@ pub struct HttpConfig {
     /// Milliseconds to wait after each response before the next request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pace_ms: Option<u64>,
+    /// Seconds to wait for the server to listen before giving up (`app record --ready-timeout`).
+    /// Unset keeps the default, `READY`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ready_secs: Option<u64>,
+}
+
+/// How long a start waits for the port: the saved `--ready-timeout`, or `READY`.
+fn ready_timeout(http: &HttpConfig) -> Duration {
+    http.ready_secs.map_or(READY, Duration::from_secs)
 }
 
 /// The `http` config of a recording: the saved one, changed by what this record was given.
-pub(crate) fn merge_config(saved: Option<HttpConfig>, opts: &RecordOptions) -> Option<HttpConfig> {
-    let asked =
-        opts.http || opts.port.is_some() || !opts.server_args.is_empty() || opts.pace_ms.is_some();
+pub(crate) fn merge_config(
+    saved: Option<HttpConfig>,
+    opts: &RecordOptions,
+) -> Result<Option<HttpConfig>> {
+    let asked = opts.http == Some(true)
+        || opts.port.is_some()
+        || opts.server_args.is_some_and(|args| !args.is_empty())
+        || opts.pace_ms.is_some()
+        || opts.ready_secs.is_some();
+    if opts.http == Some(false) {
+        ensure!(
+            !asked,
+            "--no-http cannot be combined with --http, --port, --arg, --pace or --ready-timeout"
+        );
+        return Ok(None);
+    }
     let mut config = match (saved, asked) {
         (Some(c), _) => c,
         (None, true) => HttpConfig::default(),
-        (None, false) => return None,
+        (None, false) => return Ok(None),
     };
-    if opts.port.is_some() {
-        config.port = opts.port;
+    if let Some(port) = opts.port {
+        config.port = (port > 0).then_some(port);
     }
-    if !opts.server_args.is_empty() {
-        config.args = opts.server_args.to_vec();
+    if let Some(args) = opts.server_args {
+        config.args = args.to_vec();
     }
-    if !opts.fresh.is_empty() {
-        config.fresh = opts.fresh.to_vec();
+    if let Some(fresh) = opts.fresh {
+        config.fresh = fresh.to_vec();
     }
     if let Some(pace) = opts.pace_ms {
         config.pace_ms = (pace > 0).then_some(pace);
     }
-    Some(config)
+    if let Some(secs) = opts.ready_secs {
+        config.ready_secs = (secs > 0).then_some(secs);
+    }
+    Ok(Some(config))
 }
 
 pub(crate) const FILES_DIR: &str = "files";
@@ -432,7 +457,9 @@ impl Server {
         let mut child = cmd
             .spawn()
             .with_context(|| format!("starting `{}`", command.join(" ")))?;
-        let deadline = Instant::now() + READY;
+        // A huge `--ready-timeout` has no representable deadline; treat it as "no deadline" rather
+        // than panicking after the child is already running.
+        let deadline = Instant::now().checked_add(launch.ready);
         let addr = loop {
             let failure = if let Some(status) = child.try_wait()? {
                 Some(format!("exited ({status}) before listening"))
@@ -442,8 +469,8 @@ impl Server {
                 } else {
                     break addr;
                 }
-            } else if Instant::now() > deadline {
-                Some(format!("did not listen within {}s", READY.as_secs()))
+            } else if deadline.is_some_and(|d| Instant::now() > d) {
+                Some(format!("did not listen within {}s", launch.ready.as_secs()))
             } else {
                 None
             };
@@ -694,6 +721,8 @@ struct Launch<'a> {
     files: Option<&'a Path>,
     pace: Option<Duration>,
     effects: Option<&'a crate::effects::EffectsConfig>,
+    /// How long to wait for the port before giving up.
+    ready: Duration,
 }
 
 /// Starts the server once and sends every request in order.
@@ -1499,6 +1528,7 @@ pub(crate) fn record(
         files: files.as_deref(),
         pace: http.pace_ms.map(Duration::from_millis),
         effects: config.effects.as_ref(),
+        ready: ready_timeout(&http),
     };
     let one = run_all(
         &config.run,
@@ -1782,6 +1812,7 @@ pub(crate) fn replay(
         files: files.as_deref(),
         pace: http.pace_ms.map(Duration::from_millis),
         effects: config.effects.as_ref(),
+        ready: ready_timeout(&http),
     };
     let answers = run_all(command, &launch, repo, port, &reqs, timeout)?;
     let mut outcome = ReplayOutcome {
@@ -1960,6 +1991,40 @@ fn decode_base64_strict(input: &str) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_ready_timeout_is_saved_kept_and_reset() {
+        let opts = |ready_secs| RecordOptions {
+            repo: Path::new("."),
+            run: &[],
+            inputs: None,
+            normalize: &[],
+            name: None,
+            traps: false,
+            timeout_secs: None,
+            http: None,
+            server_args: None,
+            fresh: None,
+            pace_ms: None,
+            port: None,
+            float_tolerance: None,
+            float_files: &[],
+            effects: None,
+            ready_secs,
+        };
+        let old: HttpConfig = serde_json::from_str(r#"{"port":8080}"#).unwrap();
+        assert_eq!(ready_timeout(&old), READY);
+        assert!(merge_config(None, &opts(None)).unwrap().is_none());
+        let set = merge_config(Some(old), &opts(Some(5))).unwrap().unwrap();
+        assert_eq!(ready_timeout(&set), Duration::from_secs(5));
+        let kept = merge_config(Some(set), &opts(None)).unwrap().unwrap();
+        assert_eq!(kept.ready_secs, Some(5));
+        let reset = merge_config(Some(kept), &opts(Some(0))).unwrap().unwrap();
+        assert_eq!(reset.ready_secs, None);
+        assert!(!serde_json::to_string(&reset).unwrap().contains("ready"));
+        let implied = merge_config(None, &opts(Some(90))).unwrap().unwrap();
+        assert_eq!(implied.ready_secs, Some(90));
+    }
 
     #[test]
     fn the_tree_of_a_server_is_found_and_zombies_are_not_alive() {
@@ -2603,5 +2668,94 @@ mod tests {
         assert!(load_spec(&http_dir, &http_dir.join("dir-body.toml")).is_err());
 
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn merge_config_drops_http_and_clears_saved_lists() {
+        let base_opts = |http, port, server_args, fresh, pace_ms| RecordOptions {
+            repo: Path::new("."),
+            run: &[],
+            inputs: None,
+            normalize: &[],
+            name: None,
+            traps: false,
+            timeout_secs: None,
+            http,
+            port,
+            server_args,
+            fresh,
+            pace_ms,
+            float_tolerance: None,
+            float_files: &[],
+            effects: None,
+            ready_secs: None,
+        };
+        let saved = HttpConfig {
+            port: Some(8080),
+            args: vec!["db.json".into()],
+            fresh: vec!["data".into()],
+            pace_ms: Some(25),
+            ready_secs: None,
+        };
+
+        // `--no-http` drops the saved server configuration.
+        let dropped = merge_config(
+            Some(saved.clone()),
+            &base_opts(Some(false), None, None, None, None),
+        )
+        .unwrap();
+        assert!(dropped.is_none());
+
+        // Combining `--no-http` with server-only options fails.
+        assert!(
+            merge_config(
+                Some(saved.clone()),
+                &base_opts(Some(false), Some(8080), None, None, None)
+            )
+            .is_err()
+        );
+        let one_arg = ["db.json".to_string()];
+        assert!(
+            merge_config(
+                Some(saved.clone()),
+                &base_opts(Some(false), None, Some(&one_arg), None, None)
+            )
+            .is_err()
+        );
+        assert!(
+            merge_config(
+                Some(saved.clone()),
+                &base_opts(Some(false), None, None, None, Some(10))
+            )
+            .is_err()
+        );
+
+        // Passing `Some(&[])` clears saved `args` and `fresh`; `--port 0` clears `port`.
+        let cleared = merge_config(
+            Some(saved.clone()),
+            &base_opts(None, Some(0), Some(&[]), Some(&[]), Some(0)),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(cleared.port, None);
+        assert!(cleared.args.is_empty());
+        assert!(cleared.fresh.is_empty());
+        assert_eq!(cleared.pace_ms, None);
+
+        // Clearing `args` on a CLI recording (no saved `http`) does not turn it into a server.
+        assert!(
+            merge_config(None, &base_opts(None, None, Some(&[]), Some(&[]), None))
+                .unwrap()
+                .is_none()
+        );
+
+        // Omitting options preserves the saved `http` settings.
+        let kept = merge_config(Some(saved), &base_opts(None, None, None, None, None))
+            .unwrap()
+            .unwrap();
+        assert_eq!(kept.port, Some(8080));
+        assert_eq!(kept.args, ["db.json"]);
+        assert_eq!(kept.fresh, ["data"]);
+        assert_eq!(kept.pace_ms, Some(25));
     }
 }
