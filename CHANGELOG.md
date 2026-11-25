@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-- `build`, `gate` and the other steps that run an outside tool say ``` `cargo` not found on PATH ```
+- `bridge --name` (and MCP `bridge`'s `name`) is refused before any folder is written when it is
+  not a valid Cargo crate name: empty, padded, a path such as `../escape`, a leading digit, a Rust
+  keyword or a reserved Windows file name. A unit whose file name starts with a digit or has no
+  letters gets a valid default name (`unit-123-rs`, `unit-rs`) (#529 by @Lewandox).
+- `build`, `gate` and the other steps that run an outside tool say `` `cargo` not found on PATH ``
   with `doctor`'s install command when the program is missing, instead of the raw `No such file or
   directory (os error 2)`; `gate` no longer tells you to fix a compile error when the build never
   started (#498, #525 by @Lewandox).
