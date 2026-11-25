@@ -175,10 +175,17 @@ fn program_exists(cmd: &Command) -> bool {
     let Some(paths) = effective_env(cmd, "PATH") else {
         return false;
     };
+    // On Unix, `Command::spawn` changes into `current_dir` before searching `PATH`; on Windows,
+    // `resolve_exe` resolves relative `PATH` entries against the parent's working directory.
+    let path_base = if cfg!(windows) {
+        std::env::current_dir().ok()
+    } else {
+        base
+    };
     std::env::split_paths(&paths).any(|dir| {
         let resolved = if dir.is_absolute() {
             dir
-        } else if let Some(cwd) = &base {
+        } else if let Some(cwd) = &path_base {
             cwd.join(dir)
         } else {
             dir
@@ -446,16 +453,23 @@ mod tests {
             "fake-rel-tool",
             std::io::Error::new(std::io::ErrorKind::NotFound, "no interpreter"),
         );
-        assert!(
-            !err.downcast_ref::<SpawnError>().unwrap().missing,
-            "relative PATH entry should resolve against child cwd"
-        );
+        if cfg!(windows) {
+            assert!(
+                err.downcast_ref::<SpawnError>().unwrap().missing,
+                "on Windows, relative PATH entries resolve against the parent cwd, not child cwd"
+            );
+        } else {
+            assert!(
+                !err.downcast_ref::<SpawnError>().unwrap().missing,
+                "on Unix, relative PATH entries resolve against child cwd"
+            );
+        }
 
         #[cfg(windows)]
         {
             std::fs::write(bin.join("only-cmd.cmd"), "@echo off\r\n").unwrap();
             let mut cmd_only = Command::new("only-cmd");
-            cmd_only.current_dir(&dir).env("PATH", "bin");
+            cmd_only.env("PATH", &bin);
             let err = spawn_error(
                 &cmd_only,
                 "only-cmd",
