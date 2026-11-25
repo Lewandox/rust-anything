@@ -1540,17 +1540,19 @@ pub struct RecordOptions<'a> {
     pub name: Option<&'a str>,
     pub traps: bool,
     pub timeout_secs: Option<u64>,
-    /// The app is a server: record requests instead of command lines.
-    pub http: bool,
-    /// The port a server always listens on (implies `http`); unset, it gets a free one through
-    /// `PORT` and `{port}`.
+    /// `Some(true)` records as a server, `Some(false)` drops any saved server setting and records
+    /// as a CLI, and `None` keeps the saved mode (or enables server mode if server-only options
+    /// such as `port`, non-empty `server_args`, or `pace_ms` are given).
+    pub http: Option<bool>,
+    /// The port a server always listens on (implies `http`); unset keeps the saved port, `Some(0)`
+    /// removes it so the server gets a free port through `PORT` and `{port}`.
     pub port: Option<u16>,
     /// Servers: arguments every start gets after its command, the original's and every build's
-    /// (implies `http`); kept from the last recording when empty.
-    pub server_args: &'a [String],
-    /// Servers: repository files or folders copied into a fresh working directory before every
-    /// start (implies `http`); kept from the last recording when empty.
-    pub fresh: &'a [String],
+    /// (non-empty implies `http`); `None` keeps the saved list, `Some(&[])` clears it.
+    pub server_args: Option<&'a [String]>,
+    /// Repository files or folders copied into a fresh working directory before every case (CLIs)
+    /// or start (servers); `None` keeps the saved list, `Some(&[])` clears it.
+    pub fresh: Option<&'a [String]>,
     /// Servers: milliseconds to wait after each response, for work the server does after
     /// answering (a file watcher, a write-behind); kept from the last recording when `None`.
     pub pace_ms: Option<u64>,
@@ -1955,10 +1957,12 @@ pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
             normalize.push(n.clone());
         }
     }
-    let explicit = opts
-        .name
-        .map(str::to_string)
-        .or_else(|| existing.as_ref().map(|c| c.name.clone()));
+    let keep_name = opts.run.is_empty() || existing.as_ref().is_some_and(|c| c.run == opts.run);
+    let explicit = opts.name.map(str::to_string).or_else(|| {
+        keep_name
+            .then(|| existing.as_ref().map(|c| c.name.clone()))
+            .flatten()
+    });
     let names = app_names(&repo, &run, explicit.as_deref());
     let mut config = Config {
         schema: SCHEMA.to_string(),
@@ -1972,7 +1976,7 @@ pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
             .timeout_secs
             .or(existing.as_ref().map(|c| c.timeout_secs))
             .unwrap_or_else(default_timeout),
-        http: crate::http::merge_config(existing.as_ref().and_then(|c| c.http.clone()), opts),
+        http: crate::http::merge_config(existing.as_ref().and_then(|c| c.http.clone()), opts)?,
         float_tolerance: match opts.float_tolerance {
             Some(t) => (crate::tolerance::check(t)? > 0.0).then_some(t),
             None => existing.as_ref().and_then(|c| c.float_tolerance),
@@ -2003,11 +2007,11 @@ pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
         recorded: Vec::new(),
     };
     if let Some(http) = config.http.as_mut() {
-        if !opts.fresh.is_empty() {
-            http.fresh = opts.fresh.to_vec();
+        if let Some(fresh) = opts.fresh {
+            http.fresh = fresh.to_vec();
         }
-    } else if !opts.fresh.is_empty() {
-        config.fresh = opts.fresh.to_vec();
+    } else if let Some(fresh) = opts.fresh {
+        config.fresh = fresh.to_vec();
     } else if let Some(c) = &existing {
         config.fresh = c.fresh.clone();
     }
@@ -2948,9 +2952,9 @@ mod tests {
             name: None,
             traps: false,
             timeout_secs: None,
-            http: false,
-            server_args: &[],
-            fresh: &[],
+            http: None,
+            server_args: None,
+            fresh: None,
             pace_ms: None,
             port: None,
             float_tolerance: None,
@@ -3235,9 +3239,9 @@ mod tests {
             name: None,
             traps: false,
             timeout_secs: None,
-            http: false,
-            server_args: &[],
-            fresh: &[],
+            http: None,
+            server_args: None,
+            fresh: None,
             pace_ms: None,
             port: None,
             float_tolerance: None,
