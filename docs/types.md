@@ -187,7 +187,9 @@ and so are any other returned pointer ("who frees it must be designed") and vari
 | `List<? super String>` | refused | uses a wildcard |
 | `char`, `Character` | refused | a UTF-16 code unit |
 | `Object` | refused | values of any type |
-| `Set<String>`, `HashSet<String>`, `BigInteger`, `BigDecimal` | refused | uses the class |
+| `TreeSet<String>`, `SortedSet<String>`, `NavigableSet<String>`, `LinkedHashSet<String>` | `Vec<String>` | in the set's order; repeated elements are a mismatch |
+| `Set<String>`, `HashSet<String>` | refused | an unordered collection |
+| `BigInteger`, `BigDecimal` | refused | uses the class |
 | `Function<Integer, Integer>`, `Runnable` | refused | takes or returns a function |
 | `Stream<String>` | refused | a lazy sequence |
 

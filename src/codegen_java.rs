@@ -320,9 +320,9 @@ public final class RustAnythingJson {
                         Object item = convert(x, args[0]);
                         try {
                             out.add(item);
-                            if (prev != null && ((Comparable<Object>) prev).compareTo(item) > 0) {
+                            if (prev != null && ((Comparable<Object>) prev).compareTo(item) >= 0) {
                                 throw new Mismatch(
-                                    "sorted set elements are not in natural order (custom comparators are not supported)");
+                                    "sorted set elements repeat or are not in natural order (custom comparators are not supported)");
                             }
                         } catch (NullPointerException | ClassCastException e) {
                             throw new Mismatch("invalid element for " + raw.getSimpleName() + ": " + e.getMessage());
@@ -335,6 +335,9 @@ public final class RustAnythingJson {
                     Set<Object> out = new LinkedHashSet<>();
                     for (Object x : (List<?>) v) {
                         out.add(convert(x, args[0]));
+                    }
+                    if (out.size() != ((List<?>) v).size()) {
+                        throw new Mismatch("duplicate elements in a set");
                     }
                     return out;
                 }
@@ -1815,9 +1818,9 @@ public final class RustAnythingWire {
             for (int k = 0; k < n; k++) {
                 T elem = item.get();
                 out.add(elem);
-                if (prev != null && ((Comparable<Object>) prev).compareTo(elem) > 0) {
+                if (prev != null && ((Comparable<Object>) prev).compareTo(elem) >= 0) {
                     throw new IllegalArgumentException(
-                        "sorted set elements are not in natural order (custom comparators are not supported)");
+                        "sorted set elements repeat or are not in natural order (custom comparators are not supported)");
                 }
                 prev = elem;
             }
@@ -1832,6 +1835,9 @@ public final class RustAnythingWire {
             java.util.LinkedHashSet<T> out = new java.util.LinkedHashSet<>(n);
             for (int k = 0; k < n; k++) {
                 out.add(item.get());
+            }
+            if (out.size() != n) {
+                throw new IllegalArgumentException("duplicate elements in a set");
             }
             return out;
         }

@@ -384,7 +384,8 @@ fn java_to_ts_inner(t: &str, in_param: bool) -> Result<String, String> {
         Some(i) if t.ends_with('>') => (&t[..i], split_top(&t[i + 1..t.len() - 1])),
         _ => (t, Vec::new()),
     };
-    let head = head.trim().rsplit('.').next().unwrap_or(head);
+    let qualified = head.trim();
+    let head = qualified.rsplit('.').next().unwrap_or(qualified);
     let arg = |i: usize| -> Result<String, String> {
         args.get(i).map_or_else(
             || Err(format!("raw `{head}`")),
@@ -397,8 +398,15 @@ fn java_to_ts_inner(t: &str, in_param: bool) -> Result<String, String> {
         "double" | "float" | "Double" | "Float" => "number".into(),
         "boolean" | "Boolean" => "boolean".into(),
         "void" | "Void" => "void".into(),
-        "List" | "ArrayList" | "Collection" | "Iterable" | "LinkedList" | "SortedSet"
-        | "NavigableSet" | "TreeSet" | "LinkedHashSet" => {
+        "List" | "ArrayList" | "Collection" | "Iterable" | "LinkedList" => {
+            let inner = arg(0)?;
+            if inner.contains(' ') {
+                format!("({inner})[]")
+            } else {
+                format!("{inner}[]")
+            }
+        }
+        "SortedSet" | "NavigableSet" | "TreeSet" | "LinkedHashSet" if jdk_set(qualified) => {
             let inner = arg(0)?;
             if inner.contains(' ') {
                 format!("({inner})[]")
@@ -417,7 +425,7 @@ fn java_to_ts_inner(t: &str, in_param: bool) -> Result<String, String> {
         "OptionalDouble" => "number | undefined".into(),
         "char" | "Character" => return Err("uses `char`, a UTF-16 code unit".into()),
         "Object" => return Err("takes or returns `Object`: values of any type".into()),
-        "Set" | "HashSet" => {
+        "Set" | "HashSet" if jdk_set(qualified) => {
             return Err(format!("uses `{head}`, an unordered collection"));
         }
         "Function" | "BiFunction" | "Supplier" | "Consumer" | "Predicate" | "Runnable"
@@ -429,6 +437,15 @@ fn java_to_ts_inner(t: &str, in_param: bool) -> Result<String, String> {
         }
         other => return Err(format!("uses the class `{other}`")),
     })
+}
+
+/// Whether a set type is the JDK's: unqualified, or under `java.util`. `com.acme.Set` is the
+/// project's own class.
+fn jdk_set(qualified: &str) -> bool {
+    match qualified.rsplit_once('.') {
+        Some((package, _)) => package == "java.util",
+        None => true,
+    }
 }
 
 fn split_top(text: &str) -> Vec<String> {
@@ -834,5 +851,14 @@ public class Totals {
             assert_eq!(java_to_ts(t).unwrap_err(), expected, "{t}");
             assert_eq!(java_to_ts_param(t).unwrap_err(), expected, "{t}");
         }
+        for t in ["com.acme.Set", "acme.util.TreeSet<String>"] {
+            let reason = java_to_ts(t).unwrap_err();
+            assert!(reason.starts_with("uses the class"), "{t}: {reason}");
+        }
+        assert!(
+            java_to_ts_param("List<Set<String>>")
+                .unwrap_err()
+                .contains("unordered collection")
+        );
     }
 }

@@ -261,7 +261,11 @@ public class OrderedSets {
             "\n",
             r#"{"fn":"toTree","args":[["c","a","b"]],"ok":["a","b","c"]}"#,
             "\n",
-            r#"{"fn":"keepOrder","args":[["c","a","b","a"]],"ok":["c","a","b"]}"#,
+            r#"{"fn":"keepOrder","args":[["c","a","b"]],"ok":["c","a","b"]}"#,
+            "\n",
+            r#"{"fn":"keepOrder","args":[["c","a","a"]],"ok":["c","a"]}"#,
+            "\n",
+            r#"{"fn":"joinSorted","args":[["a","a"]],"ok":"a"}"#,
             "\n",
             r#"{"fn":"maxNav","args":[[1,2,3,9]],"ok":9}"#,
             "\n",
@@ -284,6 +288,17 @@ public class CheckTreeSetWire {
         TreeSet<String> parsed = okReader.treeSet(okReader::str);
         if (!parsed.toString().equals("[a, b]")) {
             throw new AssertionError("unexpected sorted set: " + parsed);
+        }
+        RustAnythingWire.Writer dup = new RustAnythingWire.Writer();
+        dup.tag(1); dup.len(2); dup.str("a"); dup.str("a");
+        try {
+            RustAnythingWire.Reader dupReader = new RustAnythingWire.Reader(dup.bytes());
+            dupReader.linkedHashSet(dupReader::str);
+            throw new AssertionError("expected a repeated element to be rejected");
+        } catch (IllegalArgumentException expected) {
+            if (!expected.getMessage().contains("duplicate")) {
+                throw new AssertionError("unexpected error: " + expected);
+            }
         }
         RustAnythingWire.Writer rev = new RustAnythingWire.Writer();
         rev.tag(1); rev.len(2); rev.str("b"); rev.str("a");
@@ -324,7 +339,7 @@ public class CheckTreeSetWire {
         "diff.json",
     ]))?;
     let diff: DiffOutcome = serde_json::from_slice(&std::fs::read(run_dir.join("diff.json"))?)?;
-    assert_eq!((diff.passed, diff.failed), (4, 2), "{diff:?}");
+    assert_eq!((diff.passed, diff.failed), (4, 4), "{diff:?}");
     assert!(
         diff.mismatches
             .iter()
