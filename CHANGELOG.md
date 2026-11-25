@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- MCP `bridge` refuses a `kind` other than `"napi"` or `"wasm"`, `record`, `build` and `diff` refuse a
+  non-string `profile`, and `fuzz` refuses a non-string `keep`, instead of silently falling back to
+  the default (#530 by @Lewandox).
 - `bridge --name` (and MCP `bridge`'s `name`) is refused before any folder is written when it is
   not a valid Cargo crate name: empty, padded, a path such as `../escape`, a leading digit, a Rust
   keyword or a reserved Windows file name. A unit whose file name starts with a digit or has no
