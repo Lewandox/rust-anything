@@ -117,11 +117,11 @@ fn snapshot(repo: &Path, fresh: &[String]) -> Result<Option<PathBuf>> {
 
 /// Copies the `fresh` paths from the repository into `dir`, replacing the last snapshot.
 pub(crate) fn snapshot_to(repo: &Path, fresh: &[String], dir: &Path) -> Result<Option<PathBuf>> {
-    let _ = std::fs::remove_dir_all(dir);
     if fresh.is_empty() {
         return Ok(None);
     }
     let dir = dir.to_path_buf();
+    let _ = std::fs::remove_dir_all(&dir);
     for path in fresh {
         let rel = Path::new(path);
         ensure!(

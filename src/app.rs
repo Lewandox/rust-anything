@@ -2025,6 +2025,13 @@ pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
             cases_dir(&repo).join(CONFIG_FILE),
             serde_json::to_string_pretty(&config)? + "\n",
         )?;
+        if config.http.as_ref().is_some_and(|h| h.fresh.is_empty()) {
+            let _ = std::fs::remove_dir_all(
+                cases_dir(&repo)
+                    .join(crate::http::HTTP_DIR)
+                    .join(crate::http::FILES_DIR),
+            );
+        }
         return Ok(outcome);
     }
 
@@ -2144,6 +2151,9 @@ pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
         dir.join(CONFIG_FILE),
         serde_json::to_string_pretty(&config)? + "\n",
     )?;
+    if config.fresh.is_empty() {
+        let _ = std::fs::remove_dir_all(dir.join(FRESH_DIR));
+    }
     Ok(outcome)
 }
 

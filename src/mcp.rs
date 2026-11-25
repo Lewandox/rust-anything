@@ -667,6 +667,22 @@ fn allocator_arg(args: &Value) -> Result<bridge::Allocator> {
     })
 }
 
+fn opt_string_list(args: &Value, key: &str) -> Result<Option<Vec<String>>> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(ToString::to_string)
+                    .ok_or_else(|| anyhow::anyhow!("{key} must be an array of strings"))
+            })
+            .collect::<Result<Vec<_>>>()
+            .map(Some),
+        Some(_) => anyhow::bail!("{key} must be an array of strings"),
+    }
+}
+
 fn call(name: &str, args: &Value) -> Result<Value> {
     let path = |key: &str| -> Result<PathBuf> {
         args[key]
@@ -675,14 +691,16 @@ fn call(name: &str, args: &Value) -> Result<Value> {
             .with_context(|| format!("missing `{key}`"))
     };
     let opt_path = |key: &str| args[key].as_str().map(PathBuf::from);
-    let opt_strings = |key: &str| -> Option<Vec<String>> {
-        args.get(key).and_then(Value::as_array).map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
+    let strings = |key: &str| -> Vec<String> {
+        args[key]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
     };
-    let strings = |key: &str| -> Vec<String> { opt_strings(key).unwrap_or_default() };
     Ok(match name {
         "analyze" => {
             let root = path("root")?;
@@ -1038,8 +1056,8 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                 args["db_reset"].as_str(),
                 args["db_dump"].as_str(),
             )?;
-            let server_args = opt_strings("args");
-            let fresh = opt_strings("fresh");
+            let server_args = opt_string_list(args, "args")?;
+            let fresh = opt_string_list(args, "fresh")?;
             serde_json::to_value(app::record(&app::RecordOptions {
                 repo: &repo,
                 run: &strings("run"),
@@ -1424,5 +1442,26 @@ mod tests {
             &json!({ "repo": ".", "effect_response": ["GET /x=201", 42] }),
         );
         assert!(bad_mixed.is_err());
+    }
+
+    #[test]
+    fn app_record_rejects_non_string_array_args_and_fresh() {
+        assert_eq!(opt_string_list(&json!({}), "fresh").unwrap(), None);
+        assert_eq!(
+            opt_string_list(&json!({ "fresh": null }), "fresh").unwrap(),
+            None
+        );
+        assert_eq!(
+            opt_string_list(&json!({ "fresh": [] }), "fresh").unwrap(),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            opt_string_list(&json!({ "args": ["db.json"] }), "args").unwrap(),
+            Some(vec!["db.json".to_string()])
+        );
+        assert!(call("app_record", &json!({ "repo": ".", "fresh": [42] })).is_err());
+        assert!(call("app_record", &json!({ "repo": ".", "fresh": "data" })).is_err());
+        assert!(call("app_record", &json!({ "repo": ".", "args": [42] })).is_err());
+        assert!(call("app_record", &json!({ "repo": ".", "args": "db.json" })).is_err());
     }
 }

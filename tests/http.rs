@@ -1370,6 +1370,29 @@ http.server.HTTPServer(("127.0.0.1", int(os.environ["PORT"])), H).serve_forever(
     let rep3 = replay(&repo, None);
     assert_eq!((rep3.passed, rep3.total), (1, 1), "{:?}", rep3.failures);
 
+    // 3b. A failed recording with `--no-fresh` must leave the previous snapshot replayable.
+    let failed_clear = app::record(&RecordOptions {
+        repo: &repo,
+        run: &["nonexistent-rust-anything-binary-for-test".to_string()],
+        inputs: Some(&repo.join("cli_in.jsonl")),
+        normalize: &[],
+        name: None,
+        traps: false,
+        timeout_secs: Some(15),
+        http: None,
+        port: None,
+        server_args: None,
+        fresh: Some(&[]),
+        pace_ms: None,
+        float_tolerance: None,
+        float_files: &[],
+        effects: None,
+    });
+    assert!(failed_clear.is_err());
+    assert!(app::cases_dir(&repo).join("files/data/msg.txt").is_file());
+    let rep3b = replay(&repo, None);
+    assert_eq!((rep3b.passed, rep3b.total), (1, 1), "{:?}", rep3b.failures);
+
     // 4. Clear the CLI --fresh list and verify the snapshot folder is removed.
     let clear_cli_fresh = std::process::Command::new(env!("CARGO_BIN_EXE_rust-anything"))
         .args(["app", "record"])
