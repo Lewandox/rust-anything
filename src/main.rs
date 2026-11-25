@@ -1161,8 +1161,13 @@ fn run() -> Result<ExitCode> {
                     "speedup"
                 );
                 for r in &rows {
+                    let mark = if r.failing {
+                        "  cases do not match"
+                    } else {
+                        ""
+                    };
                     say!(
-                        "{:<24} {:>6} {:>12.0} {:>12.0} {:>8.2}x",
+                        "{:<24} {:>6} {:>12.0} {:>12.0} {:>8.2}x{mark}",
                         r.name,
                         r.cases,
                         r.original_ns,
@@ -1178,8 +1183,14 @@ fn run() -> Result<ExitCode> {
                     "\nTimed as callers call it, crossing included. Overall {:.2}x (geometric mean); {} of {} functions at least 1.1x faster.",
                     v.speedup,
                     v.faster.len(),
-                    rows.len()
+                    rows.len() - v.left_out.len()
                 );
+                if !v.left_out.is_empty() {
+                    say!(
+                        "Left out of the overall: {} (their recorded cases do not all match, so their time is the cost of failing, not of the work; run `diff`).",
+                        v.left_out.join(", ")
+                    );
+                }
                 say!("{}", v.advice);
             }
         }
