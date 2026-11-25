@@ -656,6 +656,45 @@ fn tool_schemas() -> Value {
     ])
 }
 
+/// `bridge`'s `kind`: `None` (the plan's choice) when omitted or null, an error for any other
+/// value than `"napi"` or `"wasm"`, so a mistyped argument never bridges with a different kind.
+fn kind_arg(args: &Value) -> Result<Option<bridge::Kind>> {
+    Ok(match args.get("kind") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) if s == "napi" => Some(bridge::Kind::Napi),
+        Some(Value::String(s)) if s == "wasm" => Some(bridge::Kind::Wasm),
+        Some(other) => anyhow::bail!("`kind` is \"napi\" or \"wasm\", not {other}"),
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Profile {
+    Host,
+    Android,
+}
+
+/// `record`/`build`/`diff`'s `profile`: `Host` when omitted or null, an error for any other
+/// value than `"host"` or `"android"`.
+fn profile_arg(args: &Value) -> Result<Profile> {
+    Ok(match args.get("profile") {
+        None | Some(Value::Null) => Profile::Host,
+        Some(Value::String(s)) if s == "host" => Profile::Host,
+        Some(Value::String(s)) if s == "android" => Profile::Android,
+        Some(other) => anyhow::bail!("`profile` is \"host\" or \"android\", not {other}"),
+    })
+}
+
+/// `fuzz`'s `keep`: `None` when omitted or null, an error for any other value than `"mismatches"`
+/// or `"all"`.
+fn keep_arg(args: &Value) -> Result<Option<crate::fuzz::Keep>> {
+    Ok(match args.get("keep") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) if s == "mismatches" => Some(crate::fuzz::Keep::Mismatches),
+        Some(Value::String(s)) if s == "all" => Some(crate::fuzz::Keep::All),
+        Some(other) => anyhow::bail!("`keep` is \"mismatches\" or \"all\", not {other}"),
+    })
+}
+
 /// `bridge`'s `allocator`: the default when omitted (or null), an error for any other value
 /// than the two names, so a mistyped argument never bridges with an allocator nobody chose.
 fn allocator_arg(args: &Value) -> Result<bridge::Allocator> {
@@ -699,11 +738,7 @@ fn call(name: &str, args: &Value) -> Result<Value> {
             serde_json::to_value(report)?
         }
         "bridge" => {
-            let kind = match args["kind"].as_str() {
-                Some("napi") => Some(bridge::Kind::Napi),
-                Some("wasm") => Some(bridge::Kind::Wasm),
-                _ => None,
-            };
+            let kind = kind_arg(args)?;
             let root = path("root")?;
             let allocator = allocator_arg(args)?;
             serde_json::to_value(bridge::bridge(&bridge::Options {
@@ -722,12 +757,9 @@ fn call(name: &str, args: &Value) -> Result<Value> {
         }
         "record" => {
             let crate_dir = path("crate")?;
-            let profile = args["profile"].as_str().unwrap_or("host");
-            if profile == "host" && !args["device"].is_null() {
+            let profile = profile_arg(args)?;
+            if profile == Profile::Host && !args["device"].is_null() {
                 anyhow::bail!("`device` needs profile `android`");
-            }
-            if !matches!(profile, "host" | "android") {
-                anyhow::bail!("unknown record profile `{profile}`: use host or android");
             }
             let mut inputs = opt_path("inputs");
             let test_command = strings("test_command");
@@ -774,9 +806,8 @@ fn call(name: &str, args: &Value) -> Result<Value> {
             };
             let device = args["device"].as_str();
             let mut out = serde_json::to_value(match profile {
-                "host" => harness::record(&opts)?,
-                "android" => harness::record_android(&opts, device)?,
-                other => anyhow::bail!("unknown record profile `{other}`: use host or android"),
+                Profile::Host => harness::record(&opts)?,
+                Profile::Android => harness::record_android(&opts, device)?,
             })?;
             if let Some(c) = captured {
                 out["from_tests"] = c;
@@ -808,8 +839,8 @@ fn call(name: &str, args: &Value) -> Result<Value> {
         }
         "build" => {
             let crate_dir = path("crate")?;
-            match args["profile"].as_str().unwrap_or("host") {
-                "android" => {
+            match profile_arg(args)? {
+                Profile::Android => {
                     if !args["abi"].is_null() && !args["abi"].is_array() {
                         anyhow::bail!("`abi` must be an array of Android ABI names");
                     }
@@ -831,7 +862,7 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                         },
                     )?)?
                 }
-                "host" => {
+                Profile::Host => {
                     if !args["abi"].is_null()
                         || !args["api"].is_null()
                         || !args["ndk"].is_null()
@@ -841,7 +872,6 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                     }
                     json!({ "artifact": harness::build(&crate_dir)? })
                 }
-                other => anyhow::bail!("unknown build profile `{other}`: use host or android"),
             }
         }
         "diff" => {
@@ -854,19 +884,18 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                 node_args: &strings("node_args"),
                 float_tolerance: args["float_tolerance"].as_f64(),
             };
-            serde_json::to_value(match args["profile"].as_str().unwrap_or("host") {
-                "host" => {
+            serde_json::to_value(match profile_arg(args)? {
+                Profile::Host => {
                     if !args["device"].is_null() || !args["jni_libs"].is_null() {
                         anyhow::bail!("`device` and `jni_libs` need profile `android`");
                     }
                     harness::diff(&opts)?
                 }
-                "android" => harness::diff_android(
+                Profile::Android => harness::diff_android(
                     &opts,
                     args["device"].as_str(),
                     args["jni_libs"].as_str().map(Path::new),
                 )?,
-                other => anyhow::bail!("unknown diff profile `{other}`: use host or android"),
             })?
         }
         "bench" => {
@@ -887,12 +916,7 @@ fn call(name: &str, args: &Value) -> Result<Value> {
         "fuzz" => {
             let crate_dir = path("crate")?;
             let resolve_from = opt_path("resolve_from");
-            let keep = match args["keep"].as_str() {
-                None => None,
-                Some("mismatches") => Some(crate::fuzz::Keep::Mismatches),
-                Some("all") => Some(crate::fuzz::Keep::All),
-                Some(other) => anyhow::bail!("unknown `keep` `{other}`: use mismatches or all"),
-            };
+            let keep = keep_arg(args)?;
             let time = match args["time"].as_f64() {
                 Some(0.0) => Some(std::time::Duration::ZERO),
                 Some(t) if t.is_finite() && t > 0.0 => {
@@ -1157,6 +1181,83 @@ mod tests {
         .unwrap_err();
         assert!(format!("{err}").contains("`allocator`"), "{err}");
         assert!(!out.exists(), "a refused bridge must not create the crate");
+    }
+
+    #[test]
+    fn kind_profile_and_keep_reject_unknown_or_non_string_values() {
+        assert_eq!(kind_arg(&json!({})).unwrap(), None);
+        assert_eq!(kind_arg(&json!({ "kind": null })).unwrap(), None);
+        assert_eq!(
+            kind_arg(&json!({ "kind": "napi" })).unwrap(),
+            Some(bridge::Kind::Napi)
+        );
+        assert_eq!(
+            kind_arg(&json!({ "kind": "wasm" })).unwrap(),
+            Some(bridge::Kind::Wasm)
+        );
+        for bad in [json!("pyo3"), json!("nap"), json!(42), json!(true)] {
+            let err = kind_arg(&json!({ "kind": bad.clone() })).unwrap_err();
+            assert!(
+                format!("{err}").contains("\"napi\" or \"wasm\""),
+                "{bad}: {err}"
+            );
+        }
+
+        assert_eq!(profile_arg(&json!({})).unwrap(), Profile::Host);
+        assert_eq!(
+            profile_arg(&json!({ "profile": null })).unwrap(),
+            Profile::Host
+        );
+        assert_eq!(
+            profile_arg(&json!({ "profile": "host" })).unwrap(),
+            Profile::Host
+        );
+        assert_eq!(
+            profile_arg(&json!({ "profile": "android" })).unwrap(),
+            Profile::Android
+        );
+        for bad in [json!("ios"), json!(123), json!(false)] {
+            let err = profile_arg(&json!({ "profile": bad.clone() })).unwrap_err();
+            assert!(
+                format!("{err}").contains("\"host\" or \"android\""),
+                "{bad}: {err}"
+            );
+        }
+
+        assert_eq!(keep_arg(&json!({})).unwrap(), None);
+        assert_eq!(keep_arg(&json!({ "keep": null })).unwrap(), None);
+        assert_eq!(
+            keep_arg(&json!({ "keep": "mismatches" })).unwrap(),
+            Some(crate::fuzz::Keep::Mismatches)
+        );
+        assert_eq!(
+            keep_arg(&json!({ "keep": "all" })).unwrap(),
+            Some(crate::fuzz::Keep::All)
+        );
+        for bad in [json!("some"), json!(42), json!(true)] {
+            let err = keep_arg(&json!({ "keep": bad.clone() })).unwrap_err();
+            assert!(
+                format!("{err}").contains("\"mismatches\" or \"all\""),
+                "{bad}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn bridge_refuses_a_bad_kind_before_writing_anything() {
+        let out =
+            std::env::temp_dir().join(format!("rust-anything-mcp-kind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&out);
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mini");
+        for bad in [json!("nap"), json!(42)] {
+            let err = call(
+                "bridge",
+                &json!({ "root": root, "unit": "packages/a/src/util.ts", "out": out, "kind": bad }),
+            )
+            .unwrap_err();
+            assert!(format!("{err}").contains("`kind`"), "{err}");
+            assert!(!out.exists(), "a refused bridge must not create the crate");
+        }
     }
 
     #[test]
