@@ -260,11 +260,7 @@ const FAILURES: &[FailureKind] = &[
     FailureKind {
         code: "missing_tool",
         retryable: false,
-        matches: |t| {
-            t.strip_prefix('`')
-                .and_then(|s| s.split_once('`'))
-                .is_some_and(|(_, rest)| rest.starts_with(" not found"))
-        },
+        matches: |t| t.contains("` not found") && t.contains("`rust-anything doctor`"),
         next: Some("rust-anything doctor"),
     },
     FailureKind {
@@ -1469,6 +1465,12 @@ mod tests {
             ),
             (
                 "`cargo` not found on PATH; run `rust-anything doctor`",
+                "missing_tool",
+                false,
+                Some("rust-anything doctor"),
+            ),
+            (
+                "running cargo: `cargo` not found on PATH; install it with `rustup`, or run `rust-anything doctor`",
                 "missing_tool",
                 false,
                 Some("rust-anything doctor"),

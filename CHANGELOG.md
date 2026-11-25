@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A failed MCP tool call whose program is missing (`` `cargo` not found on PATH ``) gets the
+  `missing_tool` code with `rust-anything doctor` as the next step, instead of a generic `failed`
+  (#557 by @Lewandox).
 - `record --count 0` (and MCP `record` with `count: 0`) without `--inputs` or `--from-tests` stops
   with an error before touching `cases.jsonl` or the manifest, like `fuzz --cases 0`: it used to
   replace the recording with an empty file and exit 0. `--count 0 --inputs <file>` still records
