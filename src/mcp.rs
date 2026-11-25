@@ -258,6 +258,16 @@ const FAILURES: &[FailureKind] = &[
         next: Some("rust-anything build {path}"),
     },
     FailureKind {
+        code: "missing_tool",
+        retryable: false,
+        matches: |t| {
+            t.strip_prefix('`')
+                .and_then(|s| s.split_once('`'))
+                .is_some_and(|(_, rest)| rest.starts_with(" not found"))
+        },
+        next: Some("rust-anything doctor"),
+    },
+    FailureKind {
         code: "build_failed",
         retryable: false,
         matches: |t| t.contains("cargo build") && t.contains("failed"),
@@ -1418,6 +1428,12 @@ mod tests {
                 "stale_recording",
                 false,
                 Some("rust-anything record rust/slug"),
+            ),
+            (
+                "`cargo` not found on PATH; run `rust-anything doctor`",
+                "missing_tool",
+                false,
+                Some("rust-anything doctor"),
             ),
             (
                 "cargo build failed (exit status: 101):\nerror[E0308]",
