@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+- `bridge --name` (and MCP `bridge`'s `name`) is refused before any folder is written when it is
+  not a valid Cargo crate name: empty, padded, a path such as `../escape`, a leading digit, a Rust
+  keyword or a reserved Windows file name. A unit whose file name starts with a digit or has no
+  letters gets a valid default name (`unit-123-rs`, `unit-rs`) (#529 by @Lewandox).
+- `build`, `gate` and the other steps that run an outside tool say `` `cargo` not found on PATH ``
+  with `doctor`'s install command when the program is missing, instead of the raw `No such file or
+  directory (os error 2)`; `gate` no longer tells you to fix a compile error when the build never
+  started (#498, #525 by @Lewandox).
+- `bridge --keep` refuses a name that is not an export or class of the unit, listing the ones it
+  has, before writing anything: a typo used to bridge the export it meant to keep. A bare
+  `--keep ' add '` is trimmed like `--keep "add: reason"` already was (#499, #522 by
+  @alvaroalonsoparrondo-a11y).
+- `--batch function:param` with an unknown function or parameter lists the ones `src/port.rs` has
+  (`(functions: add)`, `(parameters: a, b)`), and an empty side (`add:` or `:a`) gets the same
+  "write it as function:param" error as a spec without a colon (#504, #521 by
+  @alvaroalonsoparrondo-a11y).
+- `enable --only` (and `--partial`) with an unknown name lists the unit's exports after the unknown
+  ones, so the right spelling is in the error (#500, #520 by @Papito084).
+- `package --version` (and MCP `package`'s `version`) is refused before anything is written,
+  `--dry-run` included, unless it is `MAJOR.MINOR.PATCH` with an optional `-prerelease`: an empty,
+  padded or malformed version used to land in the package and fail only at publish time (#502, #519 by
+  @alvaroalonsoparrondo-a11y).
+- `gate`'s `size` check and `go`'s "no hot function to port" message say `1 line` and
+  `1 hot function` for one, like `analyze`'s plan (#503, #516 by @Papito084).
+- The `port_unit` and `port_whole_app` MCP prompts strip the skill's front matter when `SKILL.md`
+  has CRLF line endings, as on a Windows checkout with `core.autocrlf=true` (#501, #515 by @Papito084).
+- Generated Go, Java, Kotlin and Ruby bridges pass a zero-argument fallible port function straight
+  to `run`/`guard` (`run(port::pong)`) instead of wrapping it in a closure, so freshly bridged code
+  passes `gate`'s clippy `redundant_closure` check again (#310, #487 by @Lewandox).
+- `app record --no-http` turns a saved server recording back into a CLI, `--no-args` and
+  `--no-fresh` clear the saved `--arg` and `--fresh` lists (removing an unused snapshot), and
+  `--port 0` drops a saved fixed port; MCP `app_record` takes `http: false`, `args: []`, `fresh: []`
+  and `port: 0` the same way. A new run command re-infers an inferred app name, while one given
+  with `--name` is kept (#330, #486 by @Lewandox).
+- `app record --timeout 0` and `app replay --timeout 0` (and MCP `app_record` / `app_replay` with
+  `timeout: 0`) are refused before anything runs, instead of killing every run at once; a saved
+  `timeout_secs` of 0 is refused too, with a hint to pass `--timeout` (#497, #514 by @aloneangel45).
+- `app record --ready-timeout SECS` (and MCP `app_record`'s `ready_timeout`) sets how long a server
+  start waits for its port instead of a fixed 60 seconds. It is saved with the cases and used by
+  replay and the front door; 0 restores the default (#332, #478 by @XiaoBinGan).
+- `tests/skill.rs` fails when the skill names a command the CLI does not have, and `scripts/skill-eval/`
+  compares skill versions on a fixed port task, scored by `gate` (turns and cost from the agent's JSON).
+- `analyze` prefers a matching sibling source file over a directory index for extensionless
+  TypeScript and JavaScript imports, as TypeScript's bundler resolution does
+  (#476, #477 by @isnaenihidayat).
 - Ruby ports turn `Err("Mod::Error: message")` into that namespaced exception, and Java, Ruby and
   PHP replays load the project's own classes, so a port that returns a project-defined exception
   matches the recorded `error_type`. The Ruby wrapper reopens each receiver with `class << Mod`,

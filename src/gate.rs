@@ -22,6 +22,27 @@ pub struct Check {
     pub fix: Option<String>,
 }
 
+/// Recovery guidance when an outside tool failed to start (structured `SpawnError`).
+fn spawn_fix(err: &anyhow::Error) -> Option<String> {
+    let spawn = err.downcast_ref::<crate::process::SpawnError>()?;
+    Some(if spawn.missing {
+        match crate::doctor::missing_command(&spawn.program) {
+            Some(install) if !install.contains('\n') => {
+                format!(
+                    "install `{}` with `{install}`, or run `rust-anything doctor`",
+                    spawn.program
+                )
+            }
+            _ => format!(
+                "run `rust-anything doctor` for how to install `{}`",
+                spawn.program
+            ),
+        }
+    } else {
+        "run `rust-anything doctor` and check that the build tool can run".into()
+    })
+}
+
 /// The fix for a failed check, by its name.
 fn fix_for(check: &Check, crate_dir: &Path) -> Option<String> {
     let c = crate_dir.display();
@@ -187,7 +208,9 @@ fn size_check(crate_dir: &Path, manifest: &Manifest) -> Option<Check> {
         name: "size",
         passed,
         detail: format!(
-            "{rust} lines of Rust for {source} lines of {} ({growth:.1}x){}",
+            "{} of Rust for {} of {} ({growth:.1}x){}",
+            crate::report::count(rust, "line"),
+            crate::report::count(source, "line"),
             manifest.language.name(),
             if passed {
                 String::new()
@@ -219,14 +242,15 @@ pub fn gate(crate_dir: &Path, node_args: &[String]) -> Result<GateOutcome> {
     checks.extend(crate::error_paths::checks(crate_dir, &manifest));
     let built = harness::build(crate_dir);
     let built_ok = built.is_ok();
+    let (build_detail, build_fix) = match built {
+        Ok(path) => (format!("built {}", path.display()), None),
+        Err(e) => (last_lines(&format!("{e:#}"), 15), spawn_fix(&e)),
+    };
     checks.push(Check {
-        fix: None,
+        fix: build_fix,
         name: "build",
         passed: built_ok,
-        detail: match built {
-            Ok(path) => format!("built {}", path.display()),
-            Err(e) => last_lines(&format!("{e:#}"), 15),
-        },
+        detail: build_detail,
     });
 
     if let Some(why) = crate::recording::stale(crate_dir, &manifest) {
@@ -430,7 +454,7 @@ fn advisories_check(crate_dir: &Path) -> Option<Check> {
 /// The checks that hold for any Rust crate, bindings or not: fmt, clippy (warnings are errors),
 /// cargo test, and `unsafe` only with a `// SAFETY:` comment.
 pub fn rust_checks(crate_dir: &Path, target_dir: &Path) -> Vec<Check> {
-    let cargo = |args: &[&str]| -> (bool, String) {
+    let cargo = |args: &[&str]| -> (bool, String, Option<String>) {
         let mut cmd = Command::new("cargo");
         cmd.args(args)
             .arg("--manifest-path")
@@ -441,22 +465,25 @@ pub fn rust_checks(crate_dir: &Path, target_dir: &Path) -> Vec<Check> {
             Ok(o) => (
                 o.status.success(),
                 last_lines(&String::from_utf8_lossy(&o.stderr), 15),
+                None,
             ),
-            Err(e) => (false, e.to_string()),
+            Err(e) => (false, format!("{e:#}"), spawn_fix(&e)),
         }
     };
     let mut checks = Vec::new();
 
-    let (ok, out) = cargo(&["fmt", "--check"]);
+    let (ok, out, fix) = cargo(&["fmt", "--check"]);
     checks.push(Check {
-        fix: None,
         name: "fmt",
         passed: ok,
         detail: if ok {
             "formatted".into()
+        } else if fix.is_some() {
+            out
         } else {
             format!("run `cargo fmt`\n{out}")
         },
+        fix,
     });
 
     let mut clippy = Command::new("cargo");
@@ -465,23 +492,24 @@ pub fn rust_checks(crate_dir: &Path, target_dir: &Path) -> Vec<Check> {
         .arg(crate_dir.join("Cargo.toml"))
         .args(["--", "-D", "warnings"])
         .env("CARGO_TARGET_DIR", target_dir);
-    let (ok, out) = match crate::process::output(&mut clippy, crate::process::BUILD) {
+    let (ok, out, fix) = match crate::process::output(&mut clippy, crate::process::BUILD) {
         Ok(o) => (
             o.status.success(),
             last_lines(&String::from_utf8_lossy(&o.stderr), 15),
+            None,
         ),
-        Err(e) => (false, e.to_string()),
+        Err(e) => (false, format!("{e:#}"), spawn_fix(&e)),
     };
     checks.push(Check {
-        fix: None,
+        fix,
         name: "clippy",
         passed: ok,
         detail: if ok { "no warnings".into() } else { out },
     });
 
-    let (ok, out) = cargo(&["test", "--quiet"]);
+    let (ok, out, fix) = cargo(&["test", "--quiet"]);
     checks.push(Check {
-        fix: None,
+        fix,
         name: "cargo test",
         passed: ok,
         detail: if ok { "passed".into() } else { out },
@@ -599,7 +627,7 @@ fn last_lines(text: &str, n: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Check, fix_for, stubs, unsafe_blocks};
+    use super::{Check, fix_for, spawn_fix, stubs, unsafe_blocks};
 
     #[test]
     fn counts_every_kind_of_stub() {
@@ -631,6 +659,46 @@ mod tests {
         );
         assert!(fix_for(&check("fmt", ""), dir).is_some_and(|f| f.starts_with("cargo fmt")));
         assert_eq!(fix_for(&check("coverage", ""), dir), None);
+
+        let mut missing_cmd = std::process::Command::new("cargo");
+        missing_cmd.env_remove("PATH");
+        let missing_err = crate::process::spawn_error(
+            &missing_cmd,
+            "cargo build",
+            std::io::Error::new(std::io::ErrorKind::NotFound, "not found"),
+        );
+        let missing_fix = spawn_fix(&missing_err).unwrap();
+        assert!(
+            !missing_fix.contains("fix the compile error above"),
+            "{missing_fix}"
+        );
+        assert!(missing_fix.contains("cargo"), "{missing_fix}");
+        assert!(
+            missing_fix.contains("rust-anything doctor"),
+            "{missing_fix}"
+        );
+        assert!(!missing_fix.contains('\n'), "{missing_fix}");
+
+        let denied_err = crate::process::spawn_error(
+            &std::process::Command::new("cargo"),
+            "cargo build",
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"),
+        );
+        let spawn_hint = spawn_fix(&denied_err).unwrap();
+        assert!(
+            !spawn_hint.contains("fix the compile error above"),
+            "{spawn_hint}"
+        );
+        assert!(spawn_hint.contains("rust-anything doctor"), "{spawn_hint}");
+
+        let compile_err =
+            anyhow::anyhow!("cargo build failed (exit status: 101)\n\"not found on PATH\"");
+        assert!(spawn_fix(&compile_err).is_none());
+        let compile_fix = fix_for(&check("build", &compile_err.to_string()), dir).unwrap();
+        assert!(
+            compile_fix.starts_with("fix the compile error above"),
+            "{compile_fix}"
+        );
     }
 
     #[test]
@@ -657,5 +725,32 @@ mod tests {
         assert!(!check.passed);
         assert!(check.detail.contains("cannot read"));
         assert!(check.detail.contains("port.rs"));
+    }
+
+    #[test]
+    fn size_check_says_1_line_for_singular_source() {
+        let dir = crate::app::temp_dir("gate-size").unwrap();
+        let src_dir = dir.join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(src_dir.join("add.ts"), "export const add = 1;\n").unwrap();
+        std::fs::write(src_dir.join("port.rs"), "pub fn add() -> i32 { 1 }\n").unwrap();
+        let manifest: crate::bridge::Manifest = serde_json::from_value(serde_json::json!({
+            "schema": crate::bridge::SCHEMA,
+            "root": dir,
+            "unit": "src",
+            "crate_name": "demo",
+            "kind": "napi",
+            "exports": [],
+        }))
+        .unwrap();
+        let check = super::size_check(&dir, &manifest).unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+        assert!(
+            check
+                .detail
+                .contains("1 line of Rust for 1 line of TypeScript/JavaScript"),
+            "{}",
+            check.detail
+        );
     }
 }

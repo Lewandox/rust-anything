@@ -600,16 +600,17 @@ fn tool_schemas() -> Value {
                 "name": { "type": "string", "description": "Name the app is invoked by in its docs." },
                 "timeout": { "type": "integer", "description": "Seconds before a run is killed (default 30)." },
                 "traps": { "type": "boolean", "description": "Add semantic-trap cases (default true)." },
-                "http": { "type": "boolean", "description": "The app is a server: `run` starts it (it takes its port from PORT or {port}); cases are requests from curl lines in its docs, `inputs` ({\"name\", \"method\", \"path\", \"headers\", \"body\" | \"body_base64\" | \"body_file\"}) and traps." },
-                "port": { "type": "integer", "description": "A port the server always listens on (implies http)." },
+                "http": { "type": "boolean", "description": "The app is a server: `run` starts it (it takes its port from PORT or {port}); cases are requests from curl lines in its docs, `inputs` ({\"name\", \"method\", \"path\", \"headers\", \"body\" | \"body_base64\" | \"body_file\"}) and traps. Pass `false` to drop a saved server recording and record as a CLI again." },
+                "port": { "type": "integer", "description": "A port the server always listens on (implies http); 0 removes a saved fixed port." },
                 "effects": { "type": "array", "items": { "type": "string" }, "description": "Record what leaves the process: \"http\" (a local sink set as HTTP_PROXY, http_proxy and RUST_ANYTHING_HTTP_SINK), \"smtp\" (a local mail server, SMTP_HOST and SMTP_PORT, recording decoded headers and MIME parts) and \"smtp-raw\" (raw MIME DATA). Each case stores what reached them, in order, and replay compares it." },
                 "effect_env": { "type": "array", "items": { "type": "string" }, "description": "Point the app's own settings at a sink: VAR=http-url, VAR=smtp-host, VAR=smtp-port or VAR=smtp-url." },
                 "effect_response": { "type": "array", "items": { "type": "string" }, "description": "Canned responses for the HTTP effect sink: \"METHOD /path=STATUS [BODY|@FILE]\" (e.g. \"POST /v1/charges=201 @fixtures/charge.json\", \"POST /hooks/*=500\"). Matched in order with `*` wildcards, falling back to `200 {}`. Enables the outbound HTTP effect (`effects: [\"http\"]`, not server mode); saved for replay." },
                 "db_reset": { "type": "string", "description": "Shell command that resets the database before each case (each start for servers), run in the folder the case runs in; a script it names by a relative path with a script extension (.py, .sh, .js, .ts, .rb, .php, .pl, .ps1, .bat, .cmd, .sql and similar) is the repository's, while other relative paths, extensionless scripts included, are the case folder's. Cases then run one at a time." },
                 "db_dump": { "type": "string", "description": "Shell command that prints the database's state (e.g. `sqlite3 app.db .dump`), run after each case or request in the folder the case runs in, and recorded with the effects." },
-                "args": { "type": "array", "items": { "type": "string" }, "description": "Servers: arguments every start gets after its command, the original's and every build's ([\"db.json\"]). Implies http; saved." },
-                "fresh": { "type": "array", "items": { "type": "string" }, "description": "Repository files or folders the app reads or writes (a project tree, a database file), snapshotted and copied into a fresh working directory before every case (CLIs) or start (servers); a CLI's removed files are compared too. Saved." },
+                "args": { "type": "array", "items": { "type": "string" }, "description": "Servers: arguments every start gets after its command, the original's and every build's ([\"db.json\"]). Non-empty implies http; saved. Pass `[]` to clear saved args." },
+                "fresh": { "type": "array", "items": { "type": "string" }, "description": "Repository files or folders the app reads or writes (a project tree, a database file), snapshotted and copied into a fresh working directory before every case (CLIs) or start (servers); a CLI's removed files are compared too. Saved. Pass `[]` to clear saved paths." },
                 "pace": { "type": "integer", "description": "Servers: milliseconds to wait after each response, for work the server does after answering (a file watcher). Implies http; saved and used by replay; 0 removes it." },
+                "ready_timeout": { "type": "integer", "description": "Servers: seconds to wait for the port before giving up (default 60). Implies http; saved with the cases and used by replay and the front door; 0 restores the default." },
                 "float_tolerance": { "type": "number", "description": "Numeric output: numbers match when they differ by at most this times the larger magnitude (absolute below 1), e.g. 1e-9. Saved with the cases; 0 removes it." },
                 "float_file": { "type": "array", "items": { "type": "string" }, "description": "Written files of raw floats, compared value by value within float_tolerance: `PATH=f32le` or `PATH=f64le`. Saved with the cases." },
             }, "required": ["repo"] },
@@ -706,6 +707,22 @@ fn allocator_arg(args: &Value) -> Result<bridge::Allocator> {
     })
 }
 
+fn opt_string_list(args: &Value, key: &str) -> Result<Option<Vec<String>>> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(ToString::to_string)
+                    .ok_or_else(|| anyhow::anyhow!("{key} must be an array of strings"))
+            })
+            .collect::<Result<Vec<_>>>()
+            .map(Some),
+        Some(_) => anyhow::bail!("{key} must be an array of strings"),
+    }
+}
+
 fn call(name: &str, args: &Value) -> Result<Value> {
     let path = |key: &str| -> Result<PathBuf> {
         args[key]
@@ -723,6 +740,18 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                     .collect()
             })
             .unwrap_or_default()
+    };
+    let opt_timeout = || -> Result<Option<u64>> {
+        match args.get("timeout") {
+            None | Some(Value::Null) => Ok(None),
+            Some(v) => {
+                let secs = v
+                    .as_u64()
+                    .ok_or_else(|| anyhow::anyhow!("--timeout must be at least 1 second"))?;
+                app::check_timeout(Some(secs))?;
+                Ok(Some(secs))
+            }
+        }
     };
     Ok(match name {
         "analyze" => {
@@ -1043,6 +1072,7 @@ fn call(name: &str, args: &Value) -> Result<Value> {
         )?)?,
         "app_record" => {
             let repo = path("repo")?;
+            let timeout_secs = opt_timeout()?;
             let inputs = opt_path("inputs");
             let effect_response = match args.get("effect_response") {
                 None | Some(Value::Null) => Vec::new(),
@@ -1064,6 +1094,8 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                 args["db_reset"].as_str(),
                 args["db_dump"].as_str(),
             )?;
+            let server_args = opt_string_list(args, "args")?;
+            let fresh = opt_string_list(args, "fresh")?;
             serde_json::to_value(app::record(&app::RecordOptions {
                 repo: &repo,
                 run: &strings("run"),
@@ -1071,23 +1103,25 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                 normalize: &strings("normalize"),
                 name: args["name"].as_str(),
                 traps: args["traps"].as_bool().unwrap_or(true),
-                timeout_secs: args["timeout"].as_u64(),
-                http: args["http"].as_bool().unwrap_or(false),
+                timeout_secs,
+                http: args.get("http").and_then(Value::as_bool),
                 port: args["port"].as_u64().and_then(|p| u16::try_from(p).ok()),
-                server_args: &strings("args"),
-                fresh: &strings("fresh"),
+                server_args: server_args.as_deref(),
+                fresh: fresh.as_deref(),
                 pace_ms: args["pace"].as_u64(),
                 float_tolerance: args["float_tolerance"].as_f64(),
                 float_files: &strings("float_file"),
+                ready_secs: args["ready_timeout"].as_u64(),
                 effects,
             })?)?
         }
         "app_replay" => {
             let repo = path("repo")?;
+            let timeout_secs = opt_timeout()?;
             serde_json::to_value(app::replay(&app::ReplayOptions {
                 repo: &repo,
                 build: args["build"].as_str(),
-                timeout_secs: args["timeout"].as_u64(),
+                timeout_secs,
                 port: args["port"].as_u64().and_then(|p| u16::try_from(p).ok()),
                 case: args["case"].as_str(),
             })?)?
@@ -1525,5 +1559,48 @@ mod tests {
             &json!({ "repo": ".", "effect_response": ["GET /x=201", 42] }),
         );
         assert!(bad_mixed.is_err());
+    }
+
+    #[test]
+    fn app_record_rejects_non_string_array_args_and_fresh() {
+        assert_eq!(opt_string_list(&json!({}), "fresh").unwrap(), None);
+        assert_eq!(
+            opt_string_list(&json!({ "fresh": null }), "fresh").unwrap(),
+            None
+        );
+        assert_eq!(
+            opt_string_list(&json!({ "fresh": [] }), "fresh").unwrap(),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            opt_string_list(&json!({ "args": ["db.json"] }), "args").unwrap(),
+            Some(vec!["db.json".to_string()])
+        );
+        assert!(call("app_record", &json!({ "repo": ".", "fresh": [42] })).is_err());
+        assert!(call("app_record", &json!({ "repo": ".", "fresh": "data" })).is_err());
+        assert!(call("app_record", &json!({ "repo": ".", "args": [42] })).is_err());
+        assert!(call("app_record", &json!({ "repo": ".", "args": "db.json" })).is_err());
+    }
+
+    #[test]
+    fn app_record_and_app_replay_reject_zero_or_negative_timeout() {
+        let dir = std::env::temp_dir().join(format!("ra-mcp-timeout-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for tool in ["app_record", "app_replay"] {
+            for timeout in [json!(0), json!(-1)] {
+                let err = call(tool, &json!({ "repo": dir, "timeout": timeout })).unwrap_err();
+                let msg = format!("{err:#}");
+                assert!(
+                    msg.contains("--timeout") && msg.contains("1 second"),
+                    "{tool} with {timeout}: {msg}"
+                );
+            }
+        }
+        assert!(
+            !dir.join("rust").exists(),
+            "rejected timeout must not create rust/app-cases"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
