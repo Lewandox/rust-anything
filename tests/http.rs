@@ -98,6 +98,7 @@ time.sleep(600)
 "#;
 
 /// A server that writes its own pid, so a test can ask whether it is gone afterwards.
+#[cfg(unix)]
 const PID_SERVER: &str = r#"import os, sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
