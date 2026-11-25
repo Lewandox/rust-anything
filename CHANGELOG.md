@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- MCP tools refuse a numeric argument of the wrong type, a negative one or one out of range
+  (`count`, `rounds`, `cases`, `seed`, `min_ms`, `time`, `float_tolerance`, `port`, `pace`,
+  `ready_timeout`) instead of silently using the default; a `port` above 65535 is an error rather
+  than no port (#543 by @Lewandox).
 - The "not found on PATH" check behind `build`, `gate` and the other outside-tool steps looks up a
   program the way it is spawned: on Windows only the name and `<name>.exe` count (a bare `.cmd`
   script no longer does), and on Unix a relative `PATH` entry is resolved from the command's
