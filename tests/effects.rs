@@ -37,14 +37,15 @@ fn record(repo: &Path, python: &str, effects: Option<EffectsConfig>) -> app::Rec
         name: Some("notify"),
         traps: false,
         timeout_secs: None,
-        http: false,
-        server_args: &[],
-        fresh: &[],
+        http: None,
+        server_args: None,
+        fresh: None,
         pace_ms: None,
         port: None,
         float_tolerance: None,
         float_files: &[],
         effects,
+        ready_secs: None,
     })
     .unwrap()
 }
@@ -184,14 +185,15 @@ fn a_server_that_mails_twice_fails_only_on_that_request() {
         name: Some("server"),
         traps: false,
         timeout_secs: None,
-        http: true,
-        server_args: &[],
-        fresh: &[],
+        http: Some(true),
+        server_args: None,
+        fresh: None,
         pace_ms: None,
         port: None,
         float_tolerance: None,
         float_files: &[],
         effects: EffectsConfig::from_args(&["smtp".into()], &[], None, None).unwrap(),
+        ready_secs: None,
     })
     .unwrap();
     assert_eq!(outcome.cases, 2, "{outcome:?}");
@@ -270,14 +272,15 @@ fn rows_written_differently_fail_replay_through_the_db_dump() {
         name: Some("add"),
         traps: false,
         timeout_secs: None,
-        http: false,
-        server_args: &[],
-        fresh: &[],
+        http: None,
+        server_args: None,
+        fresh: None,
         pace_ms: None,
         port: None,
         float_tolerance: None,
         float_files: &[],
         effects,
+        ready_secs: None,
     })
     .unwrap();
     assert!(outcome.unstable.is_empty(), "{outcome:?}");
@@ -377,14 +380,15 @@ fn same_mail_with_different_mime_framing_matches_unless_smtp_raw() {
         name: Some("mailer"),
         traps: false,
         timeout_secs: None,
-        http: false,
-        server_args: &[],
-        fresh: &[],
+        http: None,
+        server_args: None,
+        fresh: None,
         pace_ms: None,
         port: None,
         float_tolerance: None,
         float_files: &[],
         effects,
+        ready_secs: None,
     })
     .unwrap();
     assert!(outcome.unstable.is_empty(), "{outcome:?}");
@@ -401,14 +405,15 @@ fn same_mail_with_different_mime_framing_matches_unless_smtp_raw() {
         name: Some("mailer"),
         traps: false,
         timeout_secs: None,
-        http: false,
-        server_args: &[],
-        fresh: &[],
+        http: None,
+        server_args: None,
+        fresh: None,
         pace_ms: None,
         port: None,
         float_tolerance: None,
         float_files: &[],
         effects: raw_effects,
+        ready_secs: None,
     })
     .unwrap();
     assert!(raw_outcome.unstable.is_empty(), "{raw_outcome:?}");
@@ -470,14 +475,15 @@ fn db_reset_and_dump_run_where_the_case_runs() {
         name: Some("notes"),
         traps: false,
         timeout_secs: None,
-        http: false,
-        server_args: &[],
-        fresh: &[],
+        http: None,
+        server_args: None,
+        fresh: None,
         pace_ms: None,
         port: None,
         float_tolerance: None,
         float_files: &[],
         effects,
+        ready_secs: None,
     })
     .unwrap();
     assert!(outcome.unstable.is_empty(), "{outcome:?}");
@@ -557,14 +563,15 @@ else:
         name: Some("pay"),
         traps: false,
         timeout_secs: None,
-        http: false,
-        server_args: &[],
-        fresh: &[],
+        http: None,
+        server_args: None,
+        fresh: None,
         pace_ms: None,
         port: None,
         float_tolerance: None,
         float_files: &[],
         effects,
+        ready_secs: None,
     })
     .unwrap();
     assert!(outcome.unstable.is_empty(), "{outcome:?}");
