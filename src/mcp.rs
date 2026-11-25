@@ -830,7 +830,9 @@ fn call(name: &str, args: &Value) -> Result<Value> {
             if profile == Profile::Host && !args["device"].is_null() {
                 anyhow::bail!("`device` needs profile `android`");
             }
-            let float_tolerance = opt_f64(args, "float_tolerance")?;
+            let float_tolerance = opt_f64(args, "float_tolerance")?
+                .map(crate::tolerance::check)
+                .transpose()?;
             let count = opt_usize(args, "count")?.unwrap_or(200);
             let mut inputs = opt_path("inputs");
             let test_command = strings("test_command");
@@ -853,7 +855,7 @@ fn call(name: &str, args: &Value) -> Result<Value> {
             let resolve_from = opt_path("resolve_from");
             if let Some(t) = float_tolerance {
                 let mut manifest = bridge::Manifest::load(&crate_dir)?;
-                manifest.float_tolerance = (crate::tolerance::check(t)? > 0.0).then_some(t);
+                manifest.float_tolerance = (t > 0.0).then_some(t);
                 manifest.save(&crate_dir)?;
             }
             if let Some(on) = args["ignore_key_order"].as_bool() {
@@ -1676,6 +1678,15 @@ mod tests {
         assert!(call("report", &json!({ "crate": ".", "min_ms": "100" })).is_err());
         assert!(call("diff", &json!({ "crate": ".", "float_tolerance": "1e-9" })).is_err());
         assert!(call("record", &json!({ "crate": ".", "count": -1 })).is_err());
+        let bad_tol = call(
+            "record",
+            &json!({ "crate": ".", "float_tolerance": -1.0, "test_command": ["nonexistent-test-cmd"] }),
+        )
+        .unwrap_err();
+        assert!(
+            format!("{bad_tol:#}").contains("--float-tolerance"),
+            "{bad_tol:#}"
+        );
         assert!(call("app_replay", &json!({ "repo": ".", "port": 70_000 })).is_err());
         assert!(call("app_record", &json!({ "repo": ".", "pace": -10 })).is_err());
         assert!(call("app_record", &json!({ "repo": ".", "ready_timeout": "30" })).is_err());
