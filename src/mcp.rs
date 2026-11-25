@@ -816,8 +816,9 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                 Some(v) if !v.is_null() => serde_json::from_value(v.clone()).context("`lang`")?,
                 _ => crate::lang::Lang::detect(&root),
             };
+            let whole_app = opt_bool(args, "whole_app")?.unwrap_or(false);
             let mut report = analyze::analyze_lang(&root, lang)?;
-            if opt_bool(args, "whole_app")?.unwrap_or(false) {
+            if whole_app {
                 report.whole_app = Some(crate::whole_app::whole_app(&root, &report));
             }
             serde_json::to_value(report)?

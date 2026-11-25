@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- MCP boolean arguments (`force`, `dry_run`, `whole_app`, `ignore_key_order`, `pin_clock`, `partial`,
+  `traps`, `http`, `library`, `check`, `skip_gate`) given a non-boolean such as `"false"` or `1` are
+  refused with `` `<key>` must be a boolean ``, instead of silently falling back to the default
+  (#563 by @Lewandox).
 - `app record` and `app replay` without a fixed `--port` pick a port that is free on both `127.0.0.1`
   and `[::1]`, and try another one if something takes it before the server starts, instead of
   failing now and then with `port <N> is already in use` (#562 by @Lewandox).
