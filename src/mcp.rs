@@ -769,6 +769,16 @@ fn opt_f64(args: &Value, key: &str) -> Result<Option<f64>> {
     }
 }
 
+fn opt_bool(args: &Value, key: &str) -> Result<Option<bool>> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v
+            .as_bool()
+            .map(Some)
+            .with_context(|| format!("`{key}` must be a boolean, not {v}")),
+    }
+}
+
 fn call(name: &str, args: &Value) -> Result<Value> {
     let path = |key: &str| -> Result<PathBuf> {
         args[key]
@@ -807,7 +817,7 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                 _ => crate::lang::Lang::detect(&root),
             };
             let mut report = analyze::analyze_lang(&root, lang)?;
-            if args["whole_app"].as_bool().unwrap_or(false) {
+            if opt_bool(args, "whole_app")?.unwrap_or(false) {
                 report.whole_app = Some(crate::whole_app::whole_app(&root, &report));
             }
             serde_json::to_value(report)?
@@ -816,13 +826,14 @@ fn call(name: &str, args: &Value) -> Result<Value> {
             let kind = kind_arg(args)?;
             let root = path("root")?;
             let allocator = allocator_arg(args)?;
+            let force = opt_bool(args, "force")?.unwrap_or(false);
             serde_json::to_value(bridge::bridge(&bridge::Options {
                 root: &root,
                 unit: args["unit"].as_str().context("missing `unit`")?,
                 kind,
                 out: opt_path("out"),
                 name: args["name"].as_str().map(str::to_string),
-                force: args["force"].as_bool().unwrap_or(false),
+                force,
                 keep: strings("keep"),
                 lang: None,
                 batch: strings("batch"),
@@ -839,6 +850,8 @@ fn call(name: &str, args: &Value) -> Result<Value> {
             let float_tolerance = opt_f64(args, "float_tolerance")?
                 .map(crate::tolerance::check)
                 .transpose()?;
+            let ignore_key_order = opt_bool(args, "ignore_key_order")?;
+            let pin_clock = opt_bool(args, "pin_clock")?;
             let count = opt_usize(args, "count")?.unwrap_or(200);
             let mut inputs = opt_path("inputs");
             let test_command = strings("test_command");
@@ -864,12 +877,12 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                 manifest.float_tolerance = (t > 0.0).then_some(t);
                 manifest.save(&crate_dir)?;
             }
-            if let Some(on) = args["ignore_key_order"].as_bool() {
+            if let Some(on) = ignore_key_order {
                 let mut manifest = bridge::Manifest::load(&crate_dir)?;
                 manifest.ignore_key_order = on;
                 manifest.save(&crate_dir)?;
             }
-            let helper = match args["pin_clock"].as_bool() {
+            let helper = match pin_clock {
                 Some(on) => crate::pin::set(&crate_dir, on)?,
                 None => None,
             };
@@ -957,7 +970,7 @@ fn call(name: &str, args: &Value) -> Result<Value> {
             let opts = harness::DiffOptions {
                 crate_dir: &crate_dir,
                 module: module.as_deref(),
-                ignore_key_order: args["ignore_key_order"].as_bool().unwrap_or(false),
+                ignore_key_order: opt_bool(args, "ignore_key_order")?.unwrap_or(false),
                 node_args: &strings("node_args"),
                 float_tolerance: opt_f64(args, "float_tolerance")?,
             };
@@ -1028,7 +1041,7 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                 name: args["name"].as_str().map(str::to_string),
                 version: args["version"].as_str().map(str::to_string),
                 out: opt_path("out"),
-                dry_run: args["dry_run"].as_bool().unwrap_or(false),
+                dry_run: opt_bool(args, "dry_run")?.unwrap_or(false),
                 fallback: args["fallback"].as_str().map(str::to_string),
                 bin: strings("bin"),
                 original: args["original"].as_str().map(str::to_string),
@@ -1059,8 +1072,8 @@ fn call(name: &str, args: &Value) -> Result<Value> {
         "enable" => {
             let crate_dir = std::path::absolute(path("crate")?)?;
             let only = strings("only");
-            let partial = args["partial"].as_bool().unwrap_or(false);
-            let force = args["force"].as_bool().unwrap_or(false);
+            let partial = opt_bool(args, "partial")?.unwrap_or(false);
+            let force = opt_bool(args, "force")?.unwrap_or(false);
             anyhow::ensure!(
                 !(partial && (!only.is_empty() || force)),
                 "`partial` cannot be combined with `only` or `force`"
@@ -1146,9 +1159,9 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                 inputs: inputs.as_deref(),
                 normalize: &strings("normalize"),
                 name: args["name"].as_str(),
-                traps: args["traps"].as_bool().unwrap_or(true),
+                traps: opt_bool(args, "traps")?.unwrap_or(true),
                 timeout_secs,
-                http: args.get("http").and_then(Value::as_bool),
+                http: opt_bool(args, "http")?,
                 port: opt_u16(args, "port")?,
                 server_args: server_args.as_deref(),
                 fresh: fresh.as_deref(),
@@ -1174,8 +1187,8 @@ fn call(name: &str, args: &Value) -> Result<Value> {
             let repo = path("repo")?;
             serde_json::to_value(front_door::front_door(&front_door::FrontDoorOptions {
                 repo: &repo,
-                library: args["library"].as_bool().unwrap_or(false),
-                check: args["check"].as_bool().unwrap_or(true),
+                library: opt_bool(args, "library")?.unwrap_or(false),
+                check: opt_bool(args, "check")?.unwrap_or(true),
             })?)?
         }
         "app_wire" => {
@@ -1185,8 +1198,8 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                 unit: args["unit"].as_str().context("missing `unit`")?,
                 commands: &strings("commands"),
                 routes: &strings("routes"),
-                skip_gate: args["skip_gate"].as_bool().unwrap_or(false),
-                check: args["check"].as_bool().unwrap_or(true),
+                skip_gate: opt_bool(args, "skip_gate")?.unwrap_or(false),
+                check: opt_bool(args, "check")?.unwrap_or(true),
             })?)?
         }
         "app_lift" => serde_json::to_value(lift::lift(&lift::LiftOptions {
@@ -1708,5 +1721,61 @@ mod tests {
         assert!(call("app_replay", &json!({ "repo": ".", "port": 70_000 })).is_err());
         assert!(call("app_record", &json!({ "repo": ".", "pace": -10 })).is_err());
         assert!(call("app_record", &json!({ "repo": ".", "ready_timeout": "30" })).is_err());
+    }
+
+    #[test]
+    fn boolean_args_reject_non_boolean_values() {
+        assert_eq!(opt_bool(&json!({}), "force").unwrap(), None);
+        assert_eq!(opt_bool(&json!({ "force": null }), "force").unwrap(), None);
+        assert_eq!(
+            opt_bool(&json!({ "force": true }), "force").unwrap(),
+            Some(true)
+        );
+        assert_eq!(
+            opt_bool(&json!({ "force": false }), "force").unwrap(),
+            Some(false)
+        );
+        for bad in [json!("true"), json!("false"), json!(1), json!(0), json!([])] {
+            let err = opt_bool(&json!({ "force": bad.clone() }), "force").unwrap_err();
+            assert!(format!("{err}").contains("`force`"), "{bad}: {err}");
+        }
+
+        for (tool, args) in [
+            ("analyze", json!({ "root": ".", "whole_app": "true" })),
+            (
+                "bridge",
+                json!({ "root": ".", "unit": "src/a.ts", "force": "true" }),
+            ),
+            (
+                "record",
+                json!({ "crate": ".", "ignore_key_order": "true", "test_command": ["nonexistent"] }),
+            ),
+            (
+                "record",
+                json!({ "crate": ".", "pin_clock": 1, "test_command": ["nonexistent"] }),
+            ),
+            ("diff", json!({ "crate": ".", "ignore_key_order": "false" })),
+            ("package", json!({ "crate": ".", "dry_run": "true" })),
+            ("enable", json!({ "crate": ".", "partial": "true" })),
+            ("enable", json!({ "crate": ".", "force": 1 })),
+            ("app_record", json!({ "repo": ".", "http": "false" })),
+            ("app_record", json!({ "repo": ".", "traps": "false" })),
+            ("app_front_door", json!({ "repo": ".", "check": "false" })),
+            ("app_front_door", json!({ "repo": ".", "library": 1 })),
+            (
+                "app_wire",
+                json!({ "repo": ".", "unit": "a", "skip_gate": "true" }),
+            ),
+            (
+                "app_wire",
+                json!({ "repo": ".", "unit": "a", "check": "false" }),
+            ),
+        ] {
+            let err = call(tool, &args).unwrap_err();
+            assert!(
+                format!("{err:#}").contains("must be a boolean"),
+                "{tool} {args}: {err:#}"
+            );
+        }
     }
 }
