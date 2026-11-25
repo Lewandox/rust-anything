@@ -610,6 +610,7 @@ fn tool_schemas() -> Value {
                 "args": { "type": "array", "items": { "type": "string" }, "description": "Servers: arguments every start gets after its command, the original's and every build's ([\"db.json\"]). Non-empty implies http; saved. Pass `[]` to clear saved args." },
                 "fresh": { "type": "array", "items": { "type": "string" }, "description": "Repository files or folders the app reads or writes (a project tree, a database file), snapshotted and copied into a fresh working directory before every case (CLIs) or start (servers); a CLI's removed files are compared too. Saved. Pass `[]` to clear saved paths." },
                 "pace": { "type": "integer", "description": "Servers: milliseconds to wait after each response, for work the server does after answering (a file watcher). Implies http; saved and used by replay; 0 removes it." },
+                "ready_timeout": { "type": "integer", "description": "Servers: seconds to wait for the port before giving up (default 60). Implies http; saved with the cases and used by replay and the front door; 0 restores the default." },
                 "float_tolerance": { "type": "number", "description": "Numeric output: numbers match when they differ by at most this times the larger magnitude (absolute below 1), e.g. 1e-9. Saved with the cases; 0 removes it." },
                 "float_file": { "type": "array", "items": { "type": "string" }, "description": "Written files of raw floats, compared value by value within float_tolerance: `PATH=f32le` or `PATH=f64le`. Saved with the cases." },
             }, "required": ["repo"] },
@@ -700,6 +701,18 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                     .collect()
             })
             .unwrap_or_default()
+    };
+    let opt_timeout = || -> Result<Option<u64>> {
+        match args.get("timeout") {
+            None | Some(Value::Null) => Ok(None),
+            Some(v) => {
+                let secs = v
+                    .as_u64()
+                    .ok_or_else(|| anyhow::anyhow!("--timeout must be at least 1 second"))?;
+                app::check_timeout(Some(secs))?;
+                Ok(Some(secs))
+            }
+        }
     };
     Ok(match name {
         "analyze" => {
@@ -1035,6 +1048,7 @@ fn call(name: &str, args: &Value) -> Result<Value> {
         )?)?,
         "app_record" => {
             let repo = path("repo")?;
+            let timeout_secs = opt_timeout()?;
             let inputs = opt_path("inputs");
             let effect_response = match args.get("effect_response") {
                 None | Some(Value::Null) => Vec::new(),
@@ -1065,7 +1079,7 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                 normalize: &strings("normalize"),
                 name: args["name"].as_str(),
                 traps: args["traps"].as_bool().unwrap_or(true),
-                timeout_secs: args["timeout"].as_u64(),
+                timeout_secs,
                 http: args.get("http").and_then(Value::as_bool),
                 port: args["port"].as_u64().and_then(|p| u16::try_from(p).ok()),
                 server_args: server_args.as_deref(),
@@ -1073,15 +1087,17 @@ fn call(name: &str, args: &Value) -> Result<Value> {
                 pace_ms: args["pace"].as_u64(),
                 float_tolerance: args["float_tolerance"].as_f64(),
                 float_files: &strings("float_file"),
+                ready_secs: args["ready_timeout"].as_u64(),
                 effects,
             })?)?
         }
         "app_replay" => {
             let repo = path("repo")?;
+            let timeout_secs = opt_timeout()?;
             serde_json::to_value(app::replay(&app::ReplayOptions {
                 repo: &repo,
                 build: args["build"].as_str(),
-                timeout_secs: args["timeout"].as_u64(),
+                timeout_secs,
                 port: args["port"].as_u64().and_then(|p| u16::try_from(p).ok()),
                 case: args["case"].as_str(),
             })?)?
@@ -1463,5 +1479,27 @@ mod tests {
         assert!(call("app_record", &json!({ "repo": ".", "fresh": "data" })).is_err());
         assert!(call("app_record", &json!({ "repo": ".", "args": [42] })).is_err());
         assert!(call("app_record", &json!({ "repo": ".", "args": "db.json" })).is_err());
+    }
+
+    #[test]
+    fn app_record_and_app_replay_reject_zero_or_negative_timeout() {
+        let dir = std::env::temp_dir().join(format!("ra-mcp-timeout-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for tool in ["app_record", "app_replay"] {
+            for timeout in [json!(0), json!(-1)] {
+                let err = call(tool, &json!({ "repo": dir, "timeout": timeout })).unwrap_err();
+                let msg = format!("{err:#}");
+                assert!(
+                    msg.contains("--timeout") && msg.contains("1 second"),
+                    "{tool} with {timeout}: {msg}"
+                );
+            }
+        }
+        assert!(
+            !dir.join("rust").exists(),
+            "rejected timeout must not create rust/app-cases"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

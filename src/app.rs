@@ -121,6 +121,14 @@ pub(crate) fn default_timeout() -> u64 {
     30
 }
 
+pub(crate) fn check_timeout(timeout_secs: Option<u64>) -> Result<()> {
+    ensure!(
+        timeout_secs != Some(0),
+        "--timeout must be at least 1 second"
+    );
+    Ok(())
+}
+
 impl Config {
     pub fn load(repo: &Path) -> Result<Option<Config>> {
         let path = cases_dir(repo).join(CONFIG_FILE);
@@ -1563,6 +1571,9 @@ pub struct RecordOptions<'a> {
     /// when empty.
     pub float_files: &'a [String],
     pub effects: Option<crate::effects::EffectsConfig>,
+    /// Servers: seconds to wait for the port before giving up; kept from the last recording when
+    /// `None`; 0 restores the default, a minute.
+    pub ready_secs: Option<u64>,
 }
 
 fn is_zero(n: &usize) -> bool {
@@ -1925,6 +1936,7 @@ pub(crate) fn reserve_case_name(
 }
 
 pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
+    check_timeout(opts.timeout_secs)?;
     let repo = opts
         .repo
         .canonical()
@@ -1960,13 +1972,27 @@ pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
             normalize.push(n.clone());
         }
     }
-    let keep_name = opts.run.is_empty() || existing.as_ref().is_some_and(|c| c.run == opts.run);
+    let inferred = |run: &[String]| {
+        app_names(&repo, run, None)
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| "app".to_string())
+    };
     let explicit = opts.name.map(str::to_string).or_else(|| {
-        keep_name
-            .then(|| existing.as_ref().map(|c| c.name.clone()))
-            .flatten()
+        existing
+            .as_ref()
+            .filter(|c| opts.run.is_empty() || c.run == opts.run || c.name != inferred(&c.run))
+            .map(|c| c.name.clone())
     });
     let names = app_names(&repo, &run, explicit.as_deref());
+    let timeout_secs = opts
+        .timeout_secs
+        .or(existing.as_ref().map(|c| c.timeout_secs))
+        .unwrap_or_else(default_timeout);
+    ensure!(
+        timeout_secs >= 1,
+        "--timeout must be at least 1 second (saved timeout_secs in {CONFIG_FILE} is 0; pass --timeout 1 or higher)"
+    );
     let mut config = Config {
         schema: SCHEMA.to_string(),
         name: explicit
@@ -1975,10 +2001,7 @@ pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
         run,
         normalize,
         normalizers,
-        timeout_secs: opts
-            .timeout_secs
-            .or(existing.as_ref().map(|c| c.timeout_secs))
-            .unwrap_or_else(default_timeout),
+        timeout_secs,
         http: crate::http::merge_config(existing.as_ref().and_then(|c| c.http.clone()), opts)?,
         float_tolerance: match opts.float_tolerance {
             Some(t) => (crate::tolerance::check(t)? > 0.0).then_some(t),
@@ -2661,6 +2684,7 @@ pub(crate) fn recorded_args(repo: &Path) -> Result<Vec<(Vec<String>, bool)>> {
 }
 
 pub fn replay(opts: &ReplayOptions) -> Result<ReplayOutcome> {
+    check_timeout(opts.timeout_secs)?;
     let repo = opts
         .repo
         .canonical()
@@ -2704,7 +2728,12 @@ pub fn replay(opts: &ReplayOptions) -> Result<ReplayOutcome> {
         recorded: Vec::new(),
     });
     let norm = Normalizers::new(&config)?;
-    let timeout = Duration::from_secs(opts.timeout_secs.unwrap_or(config.timeout_secs));
+    let timeout_secs = opts.timeout_secs.unwrap_or(config.timeout_secs);
+    ensure!(
+        timeout_secs >= 1,
+        "--timeout must be at least 1 second (saved timeout_secs in {CONFIG_FILE} is 0; pass --timeout 1 or higher)"
+    );
+    let timeout = Duration::from_secs(timeout_secs);
     if config.http.is_some() {
         return crate::http::replay(
             &repo, &config, &norm, &command, opts.port, opts.case, timeout,
@@ -2978,6 +3007,7 @@ mod tests {
             float_tolerance: None,
             float_files: &[],
             effects: None,
+            ready_secs: None,
         })
         .unwrap();
         assert_eq!(recorded.cases, 1);
@@ -3265,6 +3295,7 @@ mod tests {
             float_tolerance: None,
             float_files: &[],
             effects: None,
+            ready_secs: None,
         })
         .unwrap();
         let read = |name: &str| std::fs::read_to_string(recorded.dir.join(name)).unwrap();
@@ -3273,6 +3304,42 @@ mod tests {
         assert_eq!(read("x-3.stdout"), "two\n");
         assert_eq!(read("x-4.stdout"), "three\n");
         std::fs::remove_dir_all(repo).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_new_run_command_renames_an_inferred_name_but_keeps_a_given_one() {
+        let repo = temp_dir("rename-on-new-run").unwrap();
+        std::fs::write(repo.join("one.sh"), "echo one\n").unwrap();
+        std::fs::write(repo.join("two.sh"), "echo two\n").unwrap();
+        let rec = |script: &str, name: Option<&str>| {
+            let run = ["/bin/sh".to_string(), script.to_string()];
+            record(&RecordOptions {
+                repo: &repo,
+                run: &run,
+                inputs: None,
+                normalize: &[],
+                name,
+                traps: false,
+                timeout_secs: None,
+                http: None,
+                server_args: None,
+                fresh: None,
+                pace_ms: None,
+                port: None,
+                float_tolerance: None,
+                float_files: &[],
+                effects: None,
+                ready_secs: None,
+            })
+            .unwrap();
+            Config::load(&repo).unwrap().unwrap().name
+        };
+        assert_eq!(rec("one.sh", None), "one");
+        assert_eq!(rec("two.sh", None), "two");
+        assert_eq!(rec("two.sh", Some("mytool")), "mytool");
+        assert_eq!(rec("one.sh", None), "mytool");
+        std::fs::remove_dir_all(&repo).unwrap();
     }
 
     #[test]
@@ -3326,5 +3393,82 @@ mod tests {
             [r"\\server\share\tool.exe", "--flag"]
         );
         assert_eq!(shell_split(r"echo one\\two").unwrap(), ["echo", r"one\two"]);
+    }
+
+    #[test]
+    fn record_and_replay_reject_zero_timeout_and_leave_cases_untouched() {
+        let repo = temp_dir("zero-timeout").unwrap();
+        let dir = cases_dir(&repo);
+        std::fs::create_dir_all(&dir).unwrap();
+        let sentinel_cfg = format!(
+            r#"{{"schema":"{SCHEMA}","name":"app","run":["echo","ok"],"timeout_secs":30,"recorded":["no-args"]}}"#
+        );
+        let cfg_path = dir.join(CONFIG_FILE);
+        let case_path = dir.join("no-args.toml");
+        std::fs::write(&cfg_path, &sentinel_cfg).unwrap();
+        std::fs::write(&case_path, "stdout = \"ok\\n\"\n").unwrap();
+
+        let rec_err = record(&RecordOptions {
+            repo: &repo,
+            run: &["definitely-not-run".to_string()],
+            inputs: None,
+            normalize: &[],
+            name: None,
+            traps: false,
+            timeout_secs: Some(0),
+            http: None,
+            server_args: None,
+            fresh: None,
+            pace_ms: None,
+            port: None,
+            float_tolerance: None,
+            float_files: &[],
+            effects: None,
+            ready_secs: None,
+        })
+        .unwrap_err();
+        let rec_msg = format!("{rec_err:#}");
+        assert!(
+            rec_msg.contains("--timeout") && rec_msg.contains("1 second"),
+            "{rec_msg}"
+        );
+
+        let rep_err = replay(&ReplayOptions {
+            repo: &repo,
+            build: None,
+            timeout_secs: Some(0),
+            port: None,
+            case: None,
+        })
+        .unwrap_err();
+        let rep_msg = format!("{rep_err:#}");
+        assert!(
+            rep_msg.contains("--timeout") && rep_msg.contains("1 second"),
+            "{rep_msg}"
+        );
+
+        assert_eq!(std::fs::read_to_string(&cfg_path).unwrap(), sentinel_cfg);
+        assert_eq!(
+            std::fs::read_to_string(&case_path).unwrap(),
+            "stdout = \"ok\\n\"\n"
+        );
+
+        let zero_cfg = sentinel_cfg.replace(r#""timeout_secs":30"#, r#""timeout_secs":0"#);
+        std::fs::write(&cfg_path, &zero_cfg).unwrap();
+        let saved_zero_err = replay(&ReplayOptions {
+            repo: &repo,
+            build: None,
+            timeout_secs: None,
+            port: None,
+            case: None,
+        })
+        .unwrap_err();
+        let saved_msg = format!("{saved_zero_err:#}");
+        assert!(
+            saved_msg.contains("--timeout") && saved_msg.contains("1 second"),
+            "{saved_msg}"
+        );
+
+        std::fs::remove_dir_all(repo).unwrap();
     }
 }
