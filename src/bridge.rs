@@ -1069,7 +1069,66 @@ pub(crate) const DYNAMIC_LOOKUP_BUILD_RS: &str = r#"fn main() {
 }
 "#;
 
+/// Rejects Cargo package names that would produce invalid `Cargo.toml` / Rust library names or
+/// write outside `<root>/rust/` via path separators.
+fn validate_crate_name(name: &str) -> Result<&str> {
+    const RUST_KEYWORDS: &[&str] = &[
+        "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
+        "extern", "false", "fn", "for", "gen", "if", "impl", "in", "let", "loop", "match", "mod",
+        "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super",
+        "trait", "true", "type", "unsafe", "use", "where", "while", "abstract", "become", "box",
+        "do", "final", "macro", "override", "priv", "try", "typeof", "unsized", "virtual", "yield",
+    ];
+    const WINDOWS_RESERVED: &[&str] = &[
+        "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+        "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    ];
+    let first = name.bytes().next();
+    let valid_chars = first.is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    if !valid_chars {
+        bail!(
+            "invalid crate name `{name}`: must be non-empty, start with an ASCII letter or `_`, \
+             and use only ASCII letters, digits, `-` and `_`"
+        );
+    }
+    let lib = name.replace('-', "_");
+    if lib == "_" || RUST_KEYWORDS.contains(&lib.as_str()) {
+        bail!("invalid crate name `{name}`: `{lib}` is a reserved Rust keyword");
+    }
+    let lower = name.to_ascii_lowercase();
+    if WINDOWS_RESERVED.contains(&lower.as_str()) {
+        bail!("invalid crate name `{name}`: `{name}` is a reserved filename on Windows");
+    }
+    Ok(name)
+}
+
+/// Derives a valid Cargo crate name from a unit's file/folder stem.
+fn default_crate_name(stem: &str) -> String {
+    let clean: String = stem
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let trimmed = clean.trim_matches('-');
+    if trimmed.is_empty() {
+        "unit-rs".to_string()
+    } else if trimmed.as_bytes()[0].is_ascii_digit() {
+        format!("unit-{trimmed}-rs")
+    } else {
+        format!("{trimmed}-rs")
+    }
+}
+
 pub fn bridge(opts: &Options) -> Result<Outcome> {
+    let explicit_name = opts.name.as_deref().map(validate_crate_name).transpose()?;
     let root = opts
         .root
         .canonical()
@@ -1271,19 +1330,9 @@ pub fn bridge(opts: &Options) -> Result<Outcome> {
         .split('.')
         .next()
         .unwrap_or("unit");
-    let crate_name = opts.name.clone().unwrap_or_else(|| {
-        let clean: String = stem
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() {
-                    c.to_ascii_lowercase()
-                } else {
-                    '-'
-                }
-            })
-            .collect();
-        format!("{}-rs", clean.trim_matches('-'))
-    });
+    let crate_name = explicit_name
+        .map(str::to_string)
+        .unwrap_or_else(|| default_crate_name(stem));
     let crate_dir = opts
         .out
         .clone()
@@ -1952,5 +2001,85 @@ mod tests {
         assert_eq!(snake_case("try"), "r#try");
         assert_eq!(snake_case("self"), "self_");
         assert_eq!(snake_case("Super"), "super_");
+    }
+
+    #[test]
+    fn validates_crate_names() {
+        for good in ["add-rs", "my_crate", "_helper", "Foo2", "a-1_b"] {
+            assert_eq!(validate_crate_name(good).unwrap(), good, "{good}");
+        }
+        for bad in [
+            "",
+            " ",
+            " add-rs ",
+            "foo bar",
+            "123-rs",
+            "-foo",
+            "../escape",
+            "a/b",
+            "a\\b",
+            "a\"b",
+            "café",
+            "_",
+            "fn",
+            "type",
+            "self",
+            "Self",
+            "gen",
+            "con",
+            "NUL",
+        ] {
+            assert!(
+                validate_crate_name(bad).is_err(),
+                "expected error for {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn default_crate_name_is_always_valid_for_cargo() {
+        assert_eq!(default_crate_name("add"), "add-rs");
+        assert_eq!(default_crate_name("my_util"), "my-util-rs");
+        assert_eq!(default_crate_name("123"), "unit-123-rs");
+        assert_eq!(default_crate_name("---"), "unit-rs");
+        assert_eq!(default_crate_name(""), "unit-rs");
+        for stem in ["add", "my_util", "123", "---", "", "00-index", "café"] {
+            let name = default_crate_name(stem);
+            assert!(
+                validate_crate_name(&name).is_ok(),
+                "{stem:?} -> {name:?} should be a valid crate name"
+            );
+        }
+    }
+
+    #[test]
+    fn bridge_refuses_invalid_name_before_writing_anything() {
+        let out = std::env::temp_dir().join(format!("ra-bridge-bad-name-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&out);
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mini");
+        for bad in ["../escape", "123bad", "", "fn"] {
+            let err = bridge(&Options {
+                root: &root,
+                unit: "packages/a/src/util.ts",
+                kind: Some(Kind::Napi),
+                out: Some(out.clone()),
+                name: Some(bad.to_string()),
+                force: false,
+                keep: Vec::new(),
+                lang: None,
+                batch: Vec::new(),
+                as_json: Vec::new(),
+                allocator: Allocator::default(),
+            })
+            .unwrap_err();
+            assert!(
+                format!("{err:#}").contains("invalid crate name"),
+                "{bad:?}: {err:#}"
+            );
+            assert!(
+                !out.exists(),
+                "refused --name {bad:?} must not create folder"
+            );
+        }
     }
 }
