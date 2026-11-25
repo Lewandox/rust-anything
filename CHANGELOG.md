@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `app record` and `app replay` without a fixed `--port` pick a port that is free on both `127.0.0.1`
+  and `[::1]`, and try another one if something takes it before the server starts, instead of
+  failing now and then with `port <N> is already in use` (#562 by @Lewandox).
 - `bench --min-ms 0` and `report --min-ms 0` (and MCP `bench`/`report` with `min_ms: 0`) are refused
   with `` `--min-ms` must be at least 1 ``, like `fuzz --cases 0`, instead of timing a single pass
   (#561 by @ardazeybek).
