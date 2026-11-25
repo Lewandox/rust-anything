@@ -22,11 +22,32 @@ pub struct Check {
     pub fix: Option<String>,
 }
 
+fn missing_program(detail: &str) -> Option<&str> {
+    let rest = detail.strip_prefix('`')?;
+    let (program, after) = rest.split_once('`')?;
+    after.starts_with(" not found").then_some(program)
+}
+
+fn missing_tool_fix(detail: &str) -> String {
+    match missing_program(detail) {
+        Some(program) => match crate::doctor::missing_command(program) {
+            Some(install) if !install.contains('\n') => {
+                format!("install `{program}` with `{install}`, or run `rust-anything doctor`")
+            }
+            _ => format!("run `rust-anything doctor` for how to install `{program}`"),
+        },
+        None => "run `rust-anything doctor` to check your PATH and install missing tools".into(),
+    }
+}
+
 /// The fix for a failed check, by its name.
 fn fix_for(check: &Check, crate_dir: &Path) -> Option<String> {
     let c = crate_dir.display();
     let manifest = format!("--manifest-path {c}/Cargo.toml");
     Some(match check.name {
+        "fmt" | "clippy" | "cargo test" | "build" if missing_program(&check.detail).is_some() => {
+            missing_tool_fix(&check.detail)
+        }
         "fmt" => format!("cargo fmt {manifest}"),
         "clippy" => {
             format!("cargo clippy --all-targets {manifest} -- -D warnings, then fix each warning")
@@ -38,6 +59,9 @@ fn fix_for(check: &Check, crate_dir: &Path) -> Option<String> {
                 .into()
         }
         "size" => "use the crates `rust-anything analyze` lists and fold repeated code".into(),
+        "build" if check.detail.starts_with("running ") => {
+            "run `rust-anything doctor` and check that the build tool can run".into()
+        }
         "build" => format!("fix the compile error above, then `rust-anything build {c}`"),
         "recording" => format!("rust-anything record {c}"),
         "behavior" if check.detail.contains("no recorded cases") => {
@@ -442,7 +466,7 @@ pub fn rust_checks(crate_dir: &Path, target_dir: &Path) -> Vec<Check> {
                 o.status.success(),
                 last_lines(&String::from_utf8_lossy(&o.stderr), 15),
             ),
-            Err(e) => (false, e.to_string()),
+            Err(e) => (false, format!("{e:#}")),
         }
     };
     let mut checks = Vec::new();
@@ -454,6 +478,8 @@ pub fn rust_checks(crate_dir: &Path, target_dir: &Path) -> Vec<Check> {
         passed: ok,
         detail: if ok {
             "formatted".into()
+        } else if missing_program(&out).is_some() {
+            out
         } else {
             format!("run `cargo fmt`\n{out}")
         },
@@ -470,7 +496,7 @@ pub fn rust_checks(crate_dir: &Path, target_dir: &Path) -> Vec<Check> {
             o.status.success(),
             last_lines(&String::from_utf8_lossy(&o.stderr), 15),
         ),
-        Err(e) => (false, e.to_string()),
+        Err(e) => (false, format!("{e:#}")),
     };
     checks.push(Check {
         fix: None,
@@ -631,6 +657,39 @@ mod tests {
         );
         assert!(fix_for(&check("fmt", ""), dir).is_some_and(|f| f.starts_with("cargo fmt")));
         assert_eq!(fix_for(&check("coverage", ""), dir), None);
+
+        let missing_cargo = "`cargo` not found on PATH; run `rust-anything doctor`";
+        for name in ["fmt", "clippy", "cargo test", "build"] {
+            let fix = fix_for(&check(name, missing_cargo), dir).unwrap();
+            assert!(
+                !fix.contains("fix the compile error above"),
+                "{name}: {fix}"
+            );
+            assert!(fix.contains("cargo"), "{name}: {fix}");
+            assert!(fix.contains("rust-anything doctor"), "{name}: {fix}");
+            assert!(!fix.contains('\n'), "{name}: {fix}");
+        }
+
+        let spawn_failed = "running cargo build: Permission denied";
+        let spawn_fix = fix_for(&check("build", spawn_failed), dir).unwrap();
+        assert!(
+            !spawn_fix.contains("fix the compile error above"),
+            "{spawn_fix}"
+        );
+        assert!(spawn_fix.contains("rust-anything doctor"), "{spawn_fix}");
+
+        let compile_fix = fix_for(
+            &check(
+                "build",
+                "cargo build failed (exit status: 101)\n\"not found on PATH\"",
+            ),
+            dir,
+        )
+        .unwrap();
+        assert!(
+            compile_fix.starts_with("fix the compile error above"),
+            "{compile_fix}"
+        );
     }
 
     #[test]

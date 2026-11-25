@@ -217,6 +217,15 @@ pub(crate) fn install_command(name: &str) -> Option<String> {
     runtime_fix(r, Status::Outdated, Platform::HERE)
 }
 
+/// The command `doctor` gives on this platform when a runtime is missing, matched by its name or
+/// executable (`program`).
+pub(crate) fn missing_command(program: &str) -> Option<String> {
+    let r = RUNTIMES.iter().find(|r| {
+        r.program == program || r.name == program || (program == "python" && r.name == "python3")
+    })?;
+    runtime_fix(r, Status::Missing, Platform::HERE)
+}
+
 /// The oldest version of a runtime that `doctor` accepts, by its name.
 pub(crate) fn minimum(name: &str) -> Option<Version> {
     RUNTIMES.iter().find(|r| r.name == name)?.minimum
@@ -1047,6 +1056,17 @@ mod tests {
         assert!(install_command("cobol").is_none());
         assert_eq!(minimum("ruby"), ruby.minimum);
         assert!(minimum("cobol").is_none());
+
+        let cargo = RUNTIMES.iter().find(|r| r.name == "cargo").unwrap();
+        assert_eq!(
+            missing_command("cargo"),
+            runtime_fix(cargo, Status::Missing, Platform::HERE)
+        );
+        assert_ne!(
+            missing_command("cargo").as_deref(),
+            Some("rustup update stable")
+        );
+        assert!(missing_command("cobol").is_none());
     }
 
     #[test]

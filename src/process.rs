@@ -1,10 +1,11 @@
 //! Every outside program runs with stdin closed, in its own process group, under a time limit.
 
 use std::io::Read;
+use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 
 const KEEP: usize = 1 << 20;
 
@@ -89,6 +90,32 @@ fn spawn(cmd: &mut Command) -> Result<Child> {
     spawn_with(cmd, Stdio::null())
 }
 
+/// Turns a failed `Command::spawn` / `Command::output` into an actionable error.
+/// When the program is not on `PATH` (`ErrorKind::NotFound`), names it and includes `doctor`'s
+/// install command when known instead of the raw OS error.
+pub(crate) fn spawn_error(cmd: &Command, what: &str, err: std::io::Error) -> anyhow::Error {
+    if err.kind() == std::io::ErrorKind::NotFound && cmd.get_current_dir().is_none_or(Path::is_dir)
+    {
+        let program = cmd.get_program().to_string_lossy();
+        if program.contains('/') || program.contains('\\') {
+            return anyhow!("`{program}` not found; run `rust-anything doctor`");
+        }
+        let lookup = program.strip_suffix(".exe").unwrap_or(&program);
+        return match crate::doctor::missing_command(&program)
+            .or_else(|| crate::doctor::missing_command(lookup))
+        {
+            Some(install) if install.contains('\n') => anyhow!(
+                "`{program}` not found on PATH; run `rust-anything doctor` or install it:\n{install}"
+            ),
+            Some(install) => anyhow!(
+                "`{program}` not found on PATH; install it with `{install}`, or run `rust-anything doctor`"
+            ),
+            None => anyhow!("`{program}` not found on PATH; run `rust-anything doctor`"),
+        };
+    }
+    anyhow::Error::new(err).context(format!("running {what}"))
+}
+
 fn spawn_with(cmd: &mut Command, stdin: Stdio) -> Result<Child> {
     cmd.stdin(stdin);
     #[cfg(unix)]
@@ -97,7 +124,7 @@ fn spawn_with(cmd: &mut Command, stdin: Stdio) -> Result<Child> {
         cmd.process_group(0);
     }
     cmd.spawn()
-        .with_context(|| format!("running `{}`", shown(cmd)))
+        .map_err(|e| spawn_error(cmd, &format!("`{}`", shown(cmd)), e))
 }
 
 fn drain(stream: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<Vec<u8>> {
@@ -213,5 +240,58 @@ mod tests {
         .unwrap();
         assert_eq!(out.stdout.len(), KEEP);
         assert_eq!(out.stderr_text(), "err\n");
+    }
+
+    #[test]
+    fn missing_program_names_it_and_points_to_doctor() {
+        let program = "rust-anything-nonexistent-program-498";
+        let err = output(&mut Command::new(program), Duration::from_secs(5))
+            .err()
+            .expect("nonexistent program must fail");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&format!("`{program}` not found on PATH")),
+            "{msg}"
+        );
+        assert!(msg.contains("rust-anything doctor"), "{msg}");
+        assert!(!msg.contains("os error"), "{msg}");
+    }
+
+    #[test]
+    fn missing_cargo_includes_doctor_install_command() {
+        let cmd = Command::new("cargo");
+        let err = spawn_error(
+            &cmd,
+            "cargo build",
+            std::io::Error::new(std::io::ErrorKind::NotFound, "not found"),
+        );
+        let msg = format!("{err:#}");
+        let install = crate::doctor::missing_command("cargo").unwrap();
+        assert!(msg.contains("`cargo` not found on PATH"), "{msg}");
+        assert!(msg.contains(&install), "{msg}");
+        assert!(msg.contains("rust-anything doctor"), "{msg}");
+    }
+
+    #[test]
+    fn missing_cwd_or_other_spawn_errors_keep_running_context() {
+        let mut bad_cwd = Command::new("cargo");
+        bad_cwd.current_dir(std::env::temp_dir().join("rust-anything-no-such-dir-498"));
+        let err = spawn_error(
+            &bad_cwd,
+            "cargo build",
+            std::io::Error::new(std::io::ErrorKind::NotFound, "missing cwd"),
+        );
+        let msg = format!("{err:#}");
+        assert!(msg.starts_with("running cargo build"), "{msg}");
+        assert!(!msg.contains("not found on PATH"), "{msg}");
+
+        let cmd = Command::new("cargo");
+        let perm = spawn_error(
+            &cmd,
+            "cargo build",
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"),
+        );
+        let perm_msg = format!("{perm:#}");
+        assert!(perm_msg.starts_with("running cargo build"), "{perm_msg}");
     }
 }
