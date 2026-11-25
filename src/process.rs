@@ -1,11 +1,12 @@
 //! Every outside program runs with stdin closed, in its own process group, under a time limit.
 
+use std::ffi::OsStr;
 use std::io::Read;
 use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 
 const KEEP: usize = 1 << 20;
 
@@ -90,30 +91,141 @@ fn spawn(cmd: &mut Command) -> Result<Child> {
     spawn_with(cmd, Stdio::null())
 }
 
-/// Turns a failed `Command::spawn` / `Command::output` into an actionable error.
-/// When the program is not on `PATH` (`ErrorKind::NotFound`), names it and includes `doctor`'s
-/// install command when known instead of the raw OS error.
-pub(crate) fn spawn_error(cmd: &Command, what: &str, err: std::io::Error) -> anyhow::Error {
-    if err.kind() == std::io::ErrorKind::NotFound && cmd.get_current_dir().is_none_or(Path::is_dir)
-    {
-        let program = cmd.get_program().to_string_lossy();
-        if program.contains('/') || program.contains('\\') {
-            return anyhow!("`{program}` not found; run `rust-anything doctor`");
+/// A failed launch of an outside command (`Command::spawn` / `Command::output`), kept as a
+/// structured error so callers like `gate` can distinguish missing tools and launch failures from
+/// compile errors without parsing message text.
+#[derive(Debug)]
+pub(crate) struct SpawnError {
+    pub(crate) program: String,
+    pub(crate) missing: bool,
+    message: String,
+    source: std::io::Error,
+}
+
+impl std::fmt::Display for SpawnError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for SpawnError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        (!self.missing).then_some(&self.source)
+    }
+}
+
+fn effective_env(cmd: &Command, key: &str) -> Option<std::ffi::OsString> {
+    let mut overridden = None;
+    for (k, v) in cmd.get_envs() {
+        let matched = if cfg!(windows) {
+            k.to_string_lossy().eq_ignore_ascii_case(key)
+        } else {
+            k == OsStr::new(key)
+        };
+        if matched {
+            overridden = Some(v);
         }
-        let lookup = program.strip_suffix(".exe").unwrap_or(&program);
-        return match crate::doctor::missing_command(&program)
-            .or_else(|| crate::doctor::missing_command(lookup))
+    }
+    match overridden {
+        Some(Some(val)) => Some(val.to_os_string()),
+        Some(None) => None,
+        None => std::env::var_os(key),
+    }
+}
+
+fn file_exists_with_pathext(path: &Path, cmd: &Command) -> bool {
+    if path.is_file() {
+        return true;
+    }
+    #[cfg(windows)]
+    if path.extension().is_none() {
+        let pathext = effective_env(cmd, "PATHEXT")
+            .unwrap_or_else(|| std::ffi::OsString::from(".COM;.EXE;.BAT;.CMD"));
+        let base = path.as_os_str();
+        for ext in pathext
+            .to_string_lossy()
+            .split(';')
+            .filter(|e| !e.is_empty())
         {
-            Some(install) if install.contains('\n') => anyhow!(
-                "`{program}` not found on PATH; run `rust-anything doctor` or install it:\n{install}"
-            ),
-            Some(install) => anyhow!(
-                "`{program}` not found on PATH; install it with `{install}`, or run `rust-anything doctor`"
-            ),
-            None => anyhow!("`{program}` not found on PATH; run `rust-anything doctor`"),
+            let mut candidate = base.to_os_string();
+            candidate.push(ext);
+            if Path::new(&candidate).is_file() {
+                return true;
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = cmd;
+    false
+}
+
+/// Whether `cmd`'s executable exists at its explicit path or on `cmd`'s effective `PATH`.
+/// Used to distinguish a missing executable from `ENOENT` caused by a missing shebang or ELF
+/// interpreter on Linux.
+fn program_exists(cmd: &Command) -> bool {
+    let program = cmd.get_program();
+    let prog_str = program.to_string_lossy();
+    if prog_str.contains('/') || prog_str.contains('\\') {
+        let path = Path::new(program);
+        return if path.is_absolute() {
+            file_exists_with_pathext(path, cmd)
+        } else {
+            let base = cmd
+                .get_current_dir()
+                .map(Path::to_path_buf)
+                .or_else(|| std::env::current_dir().ok());
+            base.is_some_and(|dir| file_exists_with_pathext(&dir.join(path), cmd))
         };
     }
-    anyhow::Error::new(err).context(format!("running {what}"))
+    let Some(paths) = effective_env(cmd, "PATH") else {
+        return false;
+    };
+    std::env::split_paths(&paths).any(|dir| file_exists_with_pathext(&dir.join(program), cmd))
+}
+
+/// Turns a failed `Command::spawn` / `Command::output` into an actionable error.
+/// When the program is confirmed absent (`ErrorKind::NotFound` and not found on `PATH`), names it
+/// and includes `doctor`'s install command when known instead of the raw OS error.
+pub(crate) fn spawn_error(cmd: &Command, what: &str, err: std::io::Error) -> anyhow::Error {
+    let program = cmd.get_program().to_string_lossy().into_owned();
+    if err.kind() == std::io::ErrorKind::NotFound && cmd.get_current_dir().is_none_or(Path::is_dir)
+    {
+        if !program_exists(cmd) {
+            let message = if program.contains('/') || program.contains('\\') {
+                format!("`{program}` not found; run `rust-anything doctor`")
+            } else {
+                match crate::doctor::missing_command(&program) {
+                    Some(install) if install.contains('\n') => format!(
+                        "`{program}` not found on PATH; run `rust-anything doctor` or install it:\n{install}"
+                    ),
+                    Some(install) => format!(
+                        "`{program}` not found on PATH; install it with `{install}`, or run `rust-anything doctor`"
+                    ),
+                    None => format!("`{program}` not found on PATH; run `rust-anything doctor`"),
+                }
+            };
+            return anyhow::Error::new(SpawnError {
+                program,
+                missing: true,
+                message,
+                source: err,
+            });
+        }
+        return anyhow::Error::new(SpawnError {
+            program,
+            missing: false,
+            message: format!(
+                "running {what} (executable exists, but its interpreter or loader may be missing)"
+            ),
+            source: err,
+        });
+    }
+    anyhow::Error::new(SpawnError {
+        program,
+        missing: false,
+        message: format!("running {what}"),
+        source: err,
+    })
 }
 
 fn spawn_with(cmd: &mut Command, stdin: Stdio) -> Result<Child> {
@@ -259,12 +371,16 @@ mod tests {
 
     #[test]
     fn missing_cargo_includes_doctor_install_command() {
-        let cmd = Command::new("cargo");
+        let mut cmd = Command::new("cargo");
+        cmd.env_remove("PATH");
         let err = spawn_error(
             &cmd,
             "cargo build",
             std::io::Error::new(std::io::ErrorKind::NotFound, "not found"),
         );
+        let spawn = err.downcast_ref::<SpawnError>().unwrap();
+        assert!(spawn.missing);
+        assert_eq!(spawn.program, "cargo");
         let msg = format!("{err:#}");
         let install = crate::doctor::missing_command("cargo").unwrap();
         assert!(msg.contains("`cargo` not found on PATH"), "{msg}");
@@ -273,14 +389,50 @@ mod tests {
     }
 
     #[test]
+    fn existing_executable_with_not_found_keeps_launch_context() {
+        let dir = std::env::temp_dir().join(format!("ra-proc-exists-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let wrapper = dir.join("fake-cargo");
+        std::fs::write(&wrapper, "#!/missing/interpreter\n").unwrap();
+
+        let mut on_path = Command::new("fake-cargo");
+        on_path.env("PATH", &dir);
+        let err = spawn_error(
+            &on_path,
+            "cargo build",
+            std::io::Error::new(std::io::ErrorKind::NotFound, "no interpreter"),
+        );
+        let spawn = err.downcast_ref::<SpawnError>().unwrap();
+        assert!(!spawn.missing);
+        let msg = format!("{err:#}");
+        assert!(msg.starts_with("running cargo build"), "{msg}");
+        assert!(msg.contains("interpreter"), "{msg}");
+        assert!(msg.contains("no interpreter"), "{msg}");
+        assert!(!msg.contains("not found on PATH"), "{msg}");
+
+        let explicit = Command::new(&wrapper);
+        let explicit_err = spawn_error(
+            &explicit,
+            "fake-cargo",
+            std::io::Error::new(std::io::ErrorKind::NotFound, "no interpreter"),
+        );
+        assert!(!explicit_err.downcast_ref::<SpawnError>().unwrap().missing);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn missing_cwd_or_other_spawn_errors_keep_running_context() {
         let mut bad_cwd = Command::new("cargo");
+        bad_cwd.env_remove("PATH");
         bad_cwd.current_dir(std::env::temp_dir().join("rust-anything-no-such-dir-498"));
         let err = spawn_error(
             &bad_cwd,
             "cargo build",
             std::io::Error::new(std::io::ErrorKind::NotFound, "missing cwd"),
         );
+        assert!(!err.downcast_ref::<SpawnError>().unwrap().missing);
         let msg = format!("{err:#}");
         assert!(msg.starts_with("running cargo build"), "{msg}");
         assert!(!msg.contains("not found on PATH"), "{msg}");
@@ -291,6 +443,7 @@ mod tests {
             "cargo build",
             std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"),
         );
+        assert!(!perm.downcast_ref::<SpawnError>().unwrap().missing);
         let perm_msg = format!("{perm:#}");
         assert!(perm_msg.starts_with("running cargo build"), "{perm_msg}");
     }

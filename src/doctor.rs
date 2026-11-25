@@ -220,8 +220,12 @@ pub(crate) fn install_command(name: &str) -> Option<String> {
 /// The command `doctor` gives on this platform when a runtime is missing, matched by its name or
 /// executable (`program`).
 pub(crate) fn missing_command(program: &str) -> Option<String> {
+    let lookup = program.strip_suffix(".exe").unwrap_or(program);
     let r = RUNTIMES.iter().find(|r| {
-        r.program == program || r.name == program || (program == "python" && r.name == "python3")
+        r.program == program
+            || r.program == lookup
+            || r.name == lookup
+            || (lookup == "python" && r.name == "python3")
     })?;
     runtime_fix(r, Status::Missing, Platform::HERE)
 }

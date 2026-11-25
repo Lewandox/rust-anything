@@ -22,22 +22,25 @@ pub struct Check {
     pub fix: Option<String>,
 }
 
-fn missing_program(detail: &str) -> Option<&str> {
-    let rest = detail.strip_prefix('`')?;
-    let (program, after) = rest.split_once('`')?;
-    after.starts_with(" not found").then_some(program)
-}
-
-fn missing_tool_fix(detail: &str) -> String {
-    match missing_program(detail) {
-        Some(program) => match crate::doctor::missing_command(program) {
+/// Recovery guidance when an outside tool failed to start (structured `SpawnError`).
+fn spawn_fix(err: &anyhow::Error) -> Option<String> {
+    let spawn = err.downcast_ref::<crate::process::SpawnError>()?;
+    Some(if spawn.missing {
+        match crate::doctor::missing_command(&spawn.program) {
             Some(install) if !install.contains('\n') => {
-                format!("install `{program}` with `{install}`, or run `rust-anything doctor`")
+                format!(
+                    "install `{}` with `{install}`, or run `rust-anything doctor`",
+                    spawn.program
+                )
             }
-            _ => format!("run `rust-anything doctor` for how to install `{program}`"),
-        },
-        None => "run `rust-anything doctor` to check your PATH and install missing tools".into(),
-    }
+            _ => format!(
+                "run `rust-anything doctor` for how to install `{}`",
+                spawn.program
+            ),
+        }
+    } else {
+        "run `rust-anything doctor` and check that the build tool can run".into()
+    })
 }
 
 /// The fix for a failed check, by its name.
@@ -45,9 +48,6 @@ fn fix_for(check: &Check, crate_dir: &Path) -> Option<String> {
     let c = crate_dir.display();
     let manifest = format!("--manifest-path {c}/Cargo.toml");
     Some(match check.name {
-        "fmt" | "clippy" | "cargo test" | "build" if missing_program(&check.detail).is_some() => {
-            missing_tool_fix(&check.detail)
-        }
         "fmt" => format!("cargo fmt {manifest}"),
         "clippy" => {
             format!("cargo clippy --all-targets {manifest} -- -D warnings, then fix each warning")
@@ -59,9 +59,6 @@ fn fix_for(check: &Check, crate_dir: &Path) -> Option<String> {
                 .into()
         }
         "size" => "use the crates `rust-anything analyze` lists and fold repeated code".into(),
-        "build" if check.detail.starts_with("running ") => {
-            "run `rust-anything doctor` and check that the build tool can run".into()
-        }
         "build" => format!("fix the compile error above, then `rust-anything build {c}`"),
         "recording" => format!("rust-anything record {c}"),
         "behavior" if check.detail.contains("no recorded cases") => {
@@ -243,14 +240,15 @@ pub fn gate(crate_dir: &Path, node_args: &[String]) -> Result<GateOutcome> {
     checks.extend(crate::error_paths::checks(crate_dir, &manifest));
     let built = harness::build(crate_dir);
     let built_ok = built.is_ok();
+    let (build_detail, build_fix) = match built {
+        Ok(path) => (format!("built {}", path.display()), None),
+        Err(e) => (last_lines(&format!("{e:#}"), 15), spawn_fix(&e)),
+    };
     checks.push(Check {
-        fix: None,
+        fix: build_fix,
         name: "build",
         passed: built_ok,
-        detail: match built {
-            Ok(path) => format!("built {}", path.display()),
-            Err(e) => last_lines(&format!("{e:#}"), 15),
-        },
+        detail: build_detail,
     });
 
     if let Some(why) = crate::recording::stale(crate_dir, &manifest) {
@@ -454,7 +452,7 @@ fn advisories_check(crate_dir: &Path) -> Option<Check> {
 /// The checks that hold for any Rust crate, bindings or not: fmt, clippy (warnings are errors),
 /// cargo test, and `unsafe` only with a `// SAFETY:` comment.
 pub fn rust_checks(crate_dir: &Path, target_dir: &Path) -> Vec<Check> {
-    let cargo = |args: &[&str]| -> (bool, String) {
+    let cargo = |args: &[&str]| -> (bool, String, Option<String>) {
         let mut cmd = Command::new("cargo");
         cmd.args(args)
             .arg("--manifest-path")
@@ -465,24 +463,25 @@ pub fn rust_checks(crate_dir: &Path, target_dir: &Path) -> Vec<Check> {
             Ok(o) => (
                 o.status.success(),
                 last_lines(&String::from_utf8_lossy(&o.stderr), 15),
+                None,
             ),
-            Err(e) => (false, format!("{e:#}")),
+            Err(e) => (false, format!("{e:#}"), spawn_fix(&e)),
         }
     };
     let mut checks = Vec::new();
 
-    let (ok, out) = cargo(&["fmt", "--check"]);
+    let (ok, out, fix) = cargo(&["fmt", "--check"]);
     checks.push(Check {
-        fix: None,
         name: "fmt",
         passed: ok,
         detail: if ok {
             "formatted".into()
-        } else if missing_program(&out).is_some() {
+        } else if fix.is_some() {
             out
         } else {
             format!("run `cargo fmt`\n{out}")
         },
+        fix,
     });
 
     let mut clippy = Command::new("cargo");
@@ -491,23 +490,24 @@ pub fn rust_checks(crate_dir: &Path, target_dir: &Path) -> Vec<Check> {
         .arg(crate_dir.join("Cargo.toml"))
         .args(["--", "-D", "warnings"])
         .env("CARGO_TARGET_DIR", target_dir);
-    let (ok, out) = match crate::process::output(&mut clippy, crate::process::BUILD) {
+    let (ok, out, fix) = match crate::process::output(&mut clippy, crate::process::BUILD) {
         Ok(o) => (
             o.status.success(),
             last_lines(&String::from_utf8_lossy(&o.stderr), 15),
+            None,
         ),
-        Err(e) => (false, format!("{e:#}")),
+        Err(e) => (false, format!("{e:#}"), spawn_fix(&e)),
     };
     checks.push(Check {
-        fix: None,
+        fix,
         name: "clippy",
         passed: ok,
         detail: if ok { "no warnings".into() } else { out },
     });
 
-    let (ok, out) = cargo(&["test", "--quiet"]);
+    let (ok, out, fix) = cargo(&["test", "--quiet"]);
     checks.push(Check {
-        fix: None,
+        fix,
         name: "cargo test",
         passed: ok,
         detail: if ok { "passed".into() } else { out },
@@ -625,7 +625,7 @@ fn last_lines(text: &str, n: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Check, fix_for, stubs, unsafe_blocks};
+    use super::{Check, fix_for, spawn_fix, stubs, unsafe_blocks};
 
     #[test]
     fn counts_every_kind_of_stub() {
@@ -658,34 +658,41 @@ mod tests {
         assert!(fix_for(&check("fmt", ""), dir).is_some_and(|f| f.starts_with("cargo fmt")));
         assert_eq!(fix_for(&check("coverage", ""), dir), None);
 
-        let missing_cargo = "`cargo` not found on PATH; run `rust-anything doctor`";
-        for name in ["fmt", "clippy", "cargo test", "build"] {
-            let fix = fix_for(&check(name, missing_cargo), dir).unwrap();
-            assert!(
-                !fix.contains("fix the compile error above"),
-                "{name}: {fix}"
-            );
-            assert!(fix.contains("cargo"), "{name}: {fix}");
-            assert!(fix.contains("rust-anything doctor"), "{name}: {fix}");
-            assert!(!fix.contains('\n'), "{name}: {fix}");
-        }
-
-        let spawn_failed = "running cargo build: Permission denied";
-        let spawn_fix = fix_for(&check("build", spawn_failed), dir).unwrap();
-        assert!(
-            !spawn_fix.contains("fix the compile error above"),
-            "{spawn_fix}"
+        let mut missing_cmd = std::process::Command::new("cargo");
+        missing_cmd.env_remove("PATH");
+        let missing_err = crate::process::spawn_error(
+            &missing_cmd,
+            "cargo build",
+            std::io::Error::new(std::io::ErrorKind::NotFound, "not found"),
         );
-        assert!(spawn_fix.contains("rust-anything doctor"), "{spawn_fix}");
+        let missing_fix = spawn_fix(&missing_err).unwrap();
+        assert!(
+            !missing_fix.contains("fix the compile error above"),
+            "{missing_fix}"
+        );
+        assert!(missing_fix.contains("cargo"), "{missing_fix}");
+        assert!(
+            missing_fix.contains("rust-anything doctor"),
+            "{missing_fix}"
+        );
+        assert!(!missing_fix.contains('\n'), "{missing_fix}");
 
-        let compile_fix = fix_for(
-            &check(
-                "build",
-                "cargo build failed (exit status: 101)\n\"not found on PATH\"",
-            ),
-            dir,
-        )
-        .unwrap();
+        let denied_err = crate::process::spawn_error(
+            &std::process::Command::new("cargo"),
+            "cargo build",
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"),
+        );
+        let spawn_hint = spawn_fix(&denied_err).unwrap();
+        assert!(
+            !spawn_hint.contains("fix the compile error above"),
+            "{spawn_hint}"
+        );
+        assert!(spawn_hint.contains("rust-anything doctor"), "{spawn_hint}");
+
+        let compile_err =
+            anyhow::anyhow!("cargo build failed (exit status: 101)\n\"not found on PATH\"");
+        assert!(spawn_fix(&compile_err).is_none());
+        let compile_fix = fix_for(&check("build", &compile_err.to_string()), dir).unwrap();
         assert!(
             compile_fix.starts_with("fix the compile error above"),
             "{compile_fix}"
