@@ -1646,6 +1646,36 @@ mod merge_tests {
     }
 
     #[test]
+    fn effect_responses_replace_the_saved_rules_and_survive_other_flags() {
+        let repo = Path::new(".");
+        let saved = EffectsConfig::from_args_with_responses(
+            &["http".into()],
+            &[],
+            &["GET /a=404".into()],
+            repo,
+            None,
+            None,
+        )
+        .unwrap();
+        let env_only =
+            EffectsConfig::from_args(&[], &["HOOK=http-url".into()], None, None).unwrap();
+        let kept = EffectsConfig::merge(saved.clone(), env_only).unwrap();
+        assert_eq!(kept.http_responses, saved.as_ref().unwrap().http_responses);
+        let given = EffectsConfig::from_args_with_responses(
+            &[],
+            &[],
+            &["POST /b=500".into()],
+            repo,
+            None,
+            None,
+        )
+        .unwrap();
+        let replaced = EffectsConfig::merge(saved, given).unwrap();
+        assert_eq!(replaced.http_responses.len(), 1);
+        assert_eq!(replaced.http_responses[0].path, "/b");
+    }
+
+    #[test]
     fn an_environment_update_turns_on_the_sink_it_needs() {
         let saved = EffectsConfig::from_args(&["http".into()], &[], None, None).unwrap();
         let given = EffectsConfig::from_args(&[], &["MAIL=smtp-host".into()], None, None).unwrap();
