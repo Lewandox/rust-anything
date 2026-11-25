@@ -135,19 +135,23 @@ fn effective_env(cmd: &Command, key: &str) -> Option<std::ffi::OsString> {
 
 /// Matches `std::process::Command`'s executable check: exact file path, plus `.exe` on Windows
 /// when no extension is given (Rust does not expand `PATHEXT` for `Command::spawn`).
+#[cfg(windows)]
 fn file_exists_as_executable(path: &Path) -> bool {
     if path.is_file() {
         return true;
     }
-    #[cfg(windows)]
     if path.extension().is_none() {
         let mut with_exe = path.as_os_str().to_os_string();
         with_exe.push(".exe");
-        if Path::new(&with_exe).is_file() {
-            return true;
-        }
+        return Path::new(&with_exe).is_file();
     }
     false
+}
+
+/// Matches `std::process::Command`'s executable check on non-Windows platforms.
+#[cfg(not(windows))]
+fn file_exists_as_executable(path: &Path) -> bool {
+    path.is_file()
 }
 
 /// Whether `cmd`'s executable exists at its explicit path or on `cmd`'s effective `PATH`.
