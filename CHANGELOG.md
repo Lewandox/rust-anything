@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Generated Go, Java, Kotlin and Ruby bridges pass a zero-argument fallible port function straight
+  to `run`/`guard` (`run(port::pong)`) instead of wrapping it in a closure, so freshly bridged code
+  passes `gate`'s clippy `redundant_closure` check again (#310, #487 by @Lewandox).
 - `app record --no-http` turns a saved server recording back into a CLI, `--no-args` and
   `--no-fresh` clear the saved `--arg` and `--fresh` lists (removing an unused snapshot), and
   `--port 0` drops a saved fixed port; MCP `app_record` takes `http: false`, `args: []`, `fresh: []`
