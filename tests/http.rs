@@ -1420,5 +1420,42 @@ http.server.HTTPServer(("127.0.0.1", int(os.environ["PORT"])), H).serve_forever(
     let rep4 = replay(&repo, None);
     assert_eq!((rep4.passed, rep4.total), (1, 1), "{:?}", rep4.failures);
 
+    // 5. A handwritten case whose `fs.base` points at `files` must keep `cases/files` intact
+    // when recording without `--fresh`.
+    let dir = app::cases_dir(&repo);
+    std::fs::create_dir_all(dir.join("files")).unwrap();
+    std::fs::write(dir.join("files/keep.txt"), "kept\n").unwrap();
+    std::fs::copy(dir.join("greet.toml"), dir.join("hand.toml")).unwrap();
+    let hand_toml = std::fs::read_to_string(dir.join("hand.toml")).unwrap();
+    std::fs::write(
+        dir.join("hand.toml"),
+        hand_toml.replace(
+            "fs.sandbox = true",
+            "fs.sandbox = true\nfs.base = \"files\"",
+        ),
+    )
+    .unwrap();
+    std::fs::copy(dir.join("greet.stdout"), dir.join("hand.stdout")).unwrap();
+    std::fs::copy(dir.join("greet.stderr"), dir.join("hand.stderr")).unwrap();
+    let keep_hand = std::process::Command::new(env!("CARGO_BIN_EXE_rust-anything"))
+        .args(["app", "record"])
+        .arg(&repo)
+        .args(["--no-traps", "--no-fresh", "--inputs"])
+        .arg(repo.join("cli_in.jsonl"))
+        .output()
+        .unwrap();
+    assert!(
+        keep_hand.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&keep_hand.stdout),
+        String::from_utf8_lossy(&keep_hand.stderr)
+    );
+    assert!(
+        dir.join("files/keep.txt").is_file(),
+        "handwritten case reading `files` via fs.base lost its inputs"
+    );
+    let rep5 = replay(&repo, None);
+    assert_eq!((rep5.passed, rep5.total), (2, 2), "{:?}", rep5.failures);
+
     std::fs::remove_dir_all(&repo).unwrap();
 }

@@ -1636,9 +1636,7 @@ pub(crate) fn drop_stale(outcome: &mut RecordOutcome, previous: &[String]) -> Re
             // written: `two.in/sub`, `../app-cases/two.in/sub` (resolved) and `two.in/../shared`
             // (on Unix only found while `two.in` exists) all keep `two.in`.
             let resolved = path.canonicalize().ok();
-            if read.iter().any(|base| {
-                base.starts_with(&path) || resolved.as_ref().is_some_and(|r| base.starts_with(r))
-            }) {
+            if any_base_reads(&read, &path, resolved.as_deref()) {
                 continue;
             }
             if path.is_dir() {
@@ -1662,6 +1660,11 @@ pub(crate) fn drop_stale(outcome: &mut RecordOutcome, previous: &[String]) -> Re
     outcome.stale = stale;
     outcome.kept = kept;
     Ok(())
+}
+
+fn any_base_reads(read: &BTreeSet<PathBuf>, path: &Path, resolved: Option<&Path>) -> bool {
+    read.iter()
+        .any(|base| base.starts_with(path) || resolved.is_some_and(|r| base.starts_with(r)))
 }
 
 /// The `fs.base` folders that the cases in `dir` other than `going` read, each as written (joined
@@ -2152,7 +2155,12 @@ pub fn record(opts: &RecordOptions) -> Result<RecordOutcome> {
         serde_json::to_string_pretty(&config)? + "\n",
     )?;
     if config.fresh.is_empty() {
-        let _ = std::fs::remove_dir_all(dir.join(FRESH_DIR));
+        let fresh_dir = dir.join(FRESH_DIR);
+        let retained_reads = bases_read(&dir, &BTreeSet::new());
+        let resolved = fresh_dir.canonicalize().ok();
+        if !any_base_reads(&retained_reads, &fresh_dir, resolved.as_deref()) {
+            let _ = std::fs::remove_dir_all(&fresh_dir);
+        }
     }
     Ok(outcome)
 }
