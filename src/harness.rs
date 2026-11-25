@@ -1818,7 +1818,9 @@ pub(crate) fn record_cases(
             cmd.process_group(0);
         }
         let _scratch = scratch_cwd(&mut cmd)?;
-        let mut child = cmd.spawn().with_context(|| format!("running {what}"))?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| crate::process::spawn_error(&cmd, what, e))?;
         let mut current: Option<(usize, Instant)> = None;
         let status = loop {
             if let Some(status) = child.try_wait()? {
@@ -1897,7 +1899,9 @@ pub(crate) fn scratch_cwd(cmd: &mut Command) -> Result<Option<Scratch>> {
 
 fn run(cmd: &mut Command, what: &str) -> Result<()> {
     let _scratch = scratch_cwd(cmd)?;
-    let output = cmd.output().with_context(|| format!("running {what}"))?;
+    let output = cmd
+        .output()
+        .map_err(|e| crate::process::spawn_error(cmd, what, e))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let tail: Vec<&str> = stderr.lines().rev().take(25).collect();
@@ -2579,6 +2583,19 @@ assert(round(new Uint8Array([1])) instanceof Uint8Array, 'bytes stay bytes')
         let cases = generate(&f(&[("n", "number")]), 18, &[]);
         let text = serde_json::to_string(&cases).unwrap();
         assert!(text.contains("NaN") && text.contains("-0"));
+    }
+
+    #[test]
+    fn run_reports_missing_program_clearly() {
+        let program = "rust-anything-nonexistent-build-tool-498";
+        let err = run(&mut Command::new(program), "cargo build").unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&format!("`{program}` not found on PATH")),
+            "{msg}"
+        );
+        assert!(msg.contains("rust-anything doctor"), "{msg}");
+        assert!(!msg.contains("os error"), "{msg}");
     }
 }
 

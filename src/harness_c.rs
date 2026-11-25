@@ -16,7 +16,9 @@ const WORK_DIR: &str = ".rust-anything";
 
 fn run(cmd: &mut Command, what: &str) -> Result<()> {
     let _scratch = crate::harness::scratch_cwd(cmd)?;
-    let output = cmd.output().with_context(|| format!("running {what}"))?;
+    let output = cmd
+        .output()
+        .map_err(|e| crate::process::spawn_error(cmd, what, e))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let tail: Vec<&str> = stderr.lines().rev().take(25).collect();
