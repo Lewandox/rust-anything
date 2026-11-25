@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `build`, `gate` and the other steps that run an outside tool say ``` `cargo` not found on PATH ```
+  with `doctor`'s install command when the program is missing, instead of the raw `No such file or
+  directory (os error 2)`; `gate` no longer tells you to fix a compile error when the build never
+  started (#498, #525 by @Lewandox).
 - `bridge --keep` refuses a name that is not an export or class of the unit, listing the ones it
   has, before writing anything: a typo used to bridge the export it meant to keep. A bare
   `--keep ' add '` is trimmed like `--keep "add: reason"` already was (#499, #522 by
