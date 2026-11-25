@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The "not found on PATH" check behind `build`, `gate` and the other outside-tool steps looks up a
+  program the way it is spawned: on Windows only the name and `<name>.exe` count (a bare `.cmd`
+  script no longer does), and on Unix a relative `PATH` entry is resolved from the command's
+  working directory (#541 by @Lewandox).
 - MCP `bridge` refuses a `kind` other than `"napi"` or `"wasm"`, `record`, `build` and `diff` refuse a
   non-string `profile`, and `fuzz` refuses a non-string `keep`, instead of silently falling back to
   the default (#530 by @Lewandox).
